@@ -16,9 +16,13 @@
 
 ## Current Work / TODO
 
-- [x] Simple example showing how to map an integer IP address and port combination to a single float64 value
-- [ ] Beginning of a node that can act as both the starting server as well as a subsequent connecting node
+- [x] Beginning of a node that can act as both the starting server as well as a subsequent connecting node
     - [ ] on node connect to server, both nodes should store the virtual address of its neighbor
+        - [x] connecting node shares its virtual address with the server
+        - [ ] connecting node should also open a port briefly and share that port number with the server
+        - [ ] server should store the connecting virtual address, ip, and port, and then send back its own virtual address to the connecting node on the port that they specified
+        - [ ] once the exchange has finished, both nodes should now list each other in their neighbors map
+    - [x] server waits for subsequent connections and handles them
     - [ ] threaded so that we can accept new connections while doing other work
 
 ## Related Blog Posts
