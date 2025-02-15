@@ -80,17 +80,15 @@ async def handle_client(reader, writer):
     request = None
     bad_requests = 0
     exit_commands = ["quit", "exit"]
-    c_host = writer.get_extra_info("peername")
-    c_port = c_host[1]
-    print(f"Connected to {c_host} on port {c_port}")
-
+    # c_host = writer.get_extra_info("peername")
+    # c_port = c_host[1]
+    # print(f"Connected to {c_host} on port {c_port}")
     while request not in exit_commands:
         request = (await reader.read(64)).decode("utf8")
         # chop off the newline
         request = request.strip()
         print(f"Received request: {request}")
         # can we get the host and port from the request?
-
         if len(request) == 0:
             bad_requests += 1
             if bad_requests > 3:
@@ -109,8 +107,6 @@ def usage():
 
 
 async def run_server():
-    print("run_server")
-    print(f"my virtual address is {virtual_address}")
     port = int(sys.argv[1])
     do_init_key = False
     if len(sys.argv) == 3:
@@ -121,6 +117,9 @@ async def run_server():
         else:
             usage()
             sys.exit(1)
+
+    if do_init_key:
+        init_aes_key()
 
     server = await asyncio.start_server(handle_client, "localhost", port)
 
