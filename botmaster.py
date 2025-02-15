@@ -6,7 +6,7 @@ import asyncio
 
 
 def usage():
-    print("Usage: python bot_main.py <port>")
+    print("Usage: python botmaster.py <port>")
     exit(1)
 
 
