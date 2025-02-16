@@ -6,8 +6,21 @@ import base64
 import rich
 
 
+def print_info(msg):
+    rich.print(f":pizza: {msg}")
+
+
+def print_success(msg):
+    rich.print(f":thumbs_up: {msg}")
+
+
+def print_error(msg):
+    rich.print(f":pile_of_poo: {msg}")
+
+
 class RedKingBot:
     def __init__(self, port):
+        self.is_master = False
         self.server = None
         self.virtual_address = random.uniform(0.0, 1.0)
         self.key = None
@@ -17,13 +30,14 @@ class RedKingBot:
         self.crypto = None
         self.port = port
         self.priv = rsa.PrivateKey.load_pkcs1(self.private_key_bytes)
-        rich.print(f"Initialized with virtual address {self.virtual_address}")
+        self.neighbors = {}
+        print_info(f"Initialized with virtual address {self.virtual_address}")
 
     def is_initialized(self):
         return self.key is not None
 
     async def run_server(self):
-        rich.print(f"running server on port {self.port}")
+        print_info(f"Running server on port {self.port}")
         self.server = await asyncio.start_server(
             self.handle_client, "localhost", self.port
         )
@@ -37,130 +51,122 @@ class RedKingBot:
         request = None
         bad_requests = 0
         exit_commands = ["quit", "exit"]
-        # c_host = writer.get_extra_info("peername")
-        # c_port = c_host[1]
-        # print(f"Connected to {c_host} on port {c_port}")
+        c_extra_info = writer.get_extra_info("peername")
+        c_host = c_extra_info[0]
         while request not in exit_commands:
             default_read_size = 128
             request = (await reader.read(default_read_size)).decode("utf8")
-            # chop off the newline
             request = request.strip()
-            print(f"Received request: {request}")
-            # can we get the host and port from the request?
             if len(request) == 0:
                 bad_requests += 1
                 if bad_requests > 3:
+                    print_error(
+                        f"Too many bad requests, closing connection to {c_host}"
+                    )
                     break
                 continue
+            print_info(f"Received request: {request} from {c_host}")
             bad_requests = 0
-            await self.handle_request(request, writer)
+            await self.handle_request(request, reader, writer)
             # writer.write(response.encode("utf8"))
             # await writer.drain()
         writer.close()
 
-    async def handle_request(self, request, writer):
+    async def handle_request(self, request, reader, writer):
         if not writer:
-            rich.print("No writer received")
+            print_error("No writer received")
             return
         is_init = self.is_initialized()
         if not request:
-            rich.print("No request received")
+            print_error("No request received")
             return
         if request == "init":
-            if not is_init:
-                self.init_aes_key()
-                print(f"Initialized key: {self.key}")
-            else:
-                print("Key already initialized")
-            print(f"{self.crypto}")
+            print_info(f"{self.crypto}")
             return
-        # elif is_init:
-        # print("unhandled request type")
         command_parts = request.split(" ")
-        cmd = command_parts[0]
+        if not command_parts:
+            print_error("No command parts")
+            return
+        await self.handle_command(command_parts, reader, writer)
 
-        rich.print(f"Received command: {cmd}")
-
-        if cmd == "pushkey":
-            host = command_parts[1]
-            port = int(command_parts[2])
-            await self.pushkey_to_bot(host, port)
-        elif cmd == "key":
-            encoded_encrypted_key = command_parts[1]
-            rich.print(f"Received key: {encoded_encrypted_key}")
-            encrypted_key = base64.b64decode(encoded_encrypted_key)
-            # rich.print(f"Decoding key: {encrypted_key}")
-
-            try:
-                decrypted_key = rsa.decrypt(encrypted_key, self.priv)
-                # rich.print(f"Decrypted key: {decrypted_key}")
-                self.key = decrypted_key
-                rich.print(f"Decrypted key: {self.key}")
-                # lets test encrypting something
-                test_msg = "welcome to evildojo"
-                test_msg_bytes = test_msg.encode("utf-8")
-
-                f = Fernet(self.key)
-
-                encrypted_msg = f.encrypt(test_msg_bytes)
-
-                rich.print(f"Encrypted message: {encrypted_msg}")
-                rich.print("Sending encrypted message to client")
-                # write the encrypted message to the writer
-                await writer.write(encrypted_msg)
-
-                # rich.print(f"Encrypted message: {encrypted_msg}")
-                # rich.print(f"Encrypted message length: {len(encrypted_msg)}")
-
-            except Exception as e:
-                rich.print(f"Error decrypting key: {e}")
+    async def handle_command(self, cmd_parts, reader, writer):
+        cmd = cmd_parts[0]
+        print_info(f"Received command: {cmd}")
+        # first of all, only the master can receive 'raw' commands
+        if len(cmd) == 0:
+            print_error("Empty command")
+        elif cmd == "pushkey":
+            await self.pushkey_to_bot(cmd_parts)
+        elif cmd == "pullkey":
+            await self.pullkey_from_master(cmd_parts, writer)
         else:
-            rich.print("Unrecognized command")
-        return
+            print_error("Unrecognized command")
 
-    async def pushkey_to_bot(self, host, port):
-        # global known_bots
+    async def pullkey_from_master(self, cmd_parts, writer):
+        if self.is_master:
+            print_error("Only bot can receive pullkey command")
+            return
+        encoded_encrypted_key = cmd_parts[1]
+        print_info(f"Received key: {encoded_encrypted_key}")
+        try:
+            encrypted_key = base64.b64decode(encoded_encrypted_key)
+            decrypted_key = rsa.decrypt(encrypted_key, self.priv)
+            self.key = decrypted_key
+            print_info(f"Decrypted key: {self.key}")
+            # lets test encrypting something
+            test_msg = "welcome to evildojo"
+            test_msg_bytes = test_msg.encode("utf-8")
+            f = Fernet(self.key)
+            encrypted_msg = f.encrypt(test_msg_bytes)
+            print_info(f"Encrypted message: {encrypted_msg}")
+            print_info("Sending encrypted message to client")
+            writer.write(encrypted_msg)
+        except Exception as e:
+            print_error(f"Error decrypting key: {e}")
+
+    async def pushkey_to_bot(self, cmd_parts):
+        if not self.is_master:
+            print_error("Only master can receive pushkey command")
+            return
+        if len(cmd_parts) < 3:
+            print_error("pushkey command requires host and port")
+            return
+        host = cmd_parts[1]
+        port = int(cmd_parts[2])
         try:
             reader, writer = await asyncio.open_connection(host, port)
-
-            # instead of writing ping, perhaps we want to write the key
-            msg = f"key {self.crypto}"
-            # msg = "ping"
+            msg = f"pullkey {self.crypto}"
             writer.write(msg.encode("utf8"))
-
             await writer.drain()
             default_read_size = 1024
             response = await reader.read(default_read_size)
             decoded_response = response.decode("utf8")
-            print(f"Received: {decoded_response}")
-            # its base64 encoded
-            # and encrypted with the aes key
-            # lets decrypt it
+            print_info(f"Received: {decoded_response}")
             f = Fernet(self.key)
             decrypted_response = f.decrypt(response)
-            print(f"Decrypted response: {decrypted_response}")
-
-            # known_bots.append((host, port))
-            # await writer.close()
-            # await reader.close()
+            print_info(f"Decrypted response: {decrypted_response}")
+            if decrypted_response == b"welcome to evildojo":
+                print_success("Message acknowledged!")
+                # at this point, we can probably exchange virtual address information
         except Exception as e:
-            print(f"Error connecting to bot: {e}")
+            print_error(f"Error connecting to bot: {e}")
         await writer.close()
         return await reader.close()
-        # have to return an awaitable
 
 
 class RedKingBotMaster(RedKingBot):
     def __init__(self, port):
         super().__init__(port)
+        self.is_master = True
         self.crypto = None
         self.pub = None
         self.pubkey = b"-----BEGIN RSA PUBLIC KEY-----\nMEgCQQCNVXuPwxPKJiT+fIOJdbZpSKMeovOuiN68Ckx+9VMGM3UfsDv/553ccqQB\nZP/M+CgNyTdCXXgWeM15bktLvsgdAgMBAAE=\n-----END RSA PUBLIC KEY-----"
 
     def init_aes_key(self):
         if not self.is_initialized():
-            print("Initializing...")
+            print_info("Initializing AES key")
             self.key = Fernet.generate_key()
             self.pub = rsa.PublicKey.load_pkcs1(self.pubkey)
             self.crypto = rsa.encrypt(self.key, self.pub)
             self.crypto = base64.b64encode(self.crypto).decode("utf-8")
+            print_info(f"Initialized AES key: {self.key}")
