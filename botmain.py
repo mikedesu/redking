@@ -20,8 +20,9 @@ if __name__ == "__main__":
     try:
         asyncio.run(bot.run_server())
     except KeyboardInterrupt:
-        print("Exiting...")
-        exit(0)
+        print("KeyboardInterrupt Exiting...")
     except asyncio.exceptions.CancelledError:
+        print("CancelledError Exiting...")
+    except Exception as e:
+        print(f"Exception: {e}")
         print("Exiting...")
-        exit(0)

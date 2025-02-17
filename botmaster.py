@@ -21,6 +21,9 @@ if __name__ == "__main__":
     try:
         asyncio.run(botmaster.run_server())
     except KeyboardInterrupt:
-        print("Exiting...")
+        print("KeyboardInterrupt Exiting...")
     except asyncio.exceptions.CancelledError:
+        print("CancelledError Exiting...")
+    except Exception as e:
+        print(f"Exception: {e}")
         print("Exiting...")

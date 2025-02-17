@@ -135,6 +135,9 @@ class RedKingBot:
         #    await writer.wait_closed()
         else:
             print_error("Unrecognized command")
+        print_info("End of handle_command")
+        writer.close()
+        await writer.wait_closed()
 
     async def list_neighbors(self, writer):
         print_info(f"Received list_neighbors request")
@@ -275,6 +278,8 @@ class RedKingBot:
         await writer.drain()
         default_read_size = 1024
         response = await reader.read(default_read_size)
+        writer.close()
+        await writer.wait_closed()
         print_info(f"Response: {response}")
         # decoded_response = response.decode("utf8")
         # response = await self.receive_msg(reader)
@@ -290,27 +295,9 @@ class RedKingBot:
             print_success("Message acknowledged!")
             # lets start by saving the host and port
             self.add_neighbor(host, port)
-            # now we can just ask the neighbor for their virtual address
-            # print_info("Requesting virtual address from neighbor")
-            # at this point, we can probably exchange virtual address information
-            # lets just mess around and send a new exchange of messages
-            # because the virtual address is a float, we need to convert it to hex
-            # hex_va = self.virtual_address.hex()
-            # print_info(f"Hex virtual address: {hex_va}")
-            # test reconstructing the virtual address
-            # this will be proof of readiness for exchange
-            # va = float.fromhex(hex_va)
-            # print_info(f"Reconstructed virtual address: {va}")
-            # we are ready to send to the client bot
-            # msg = f"exchange {hex_va}"
-            # encrypted_msg = f.encrypt(msg.encode("utf-8"))
-            # print_info(f"Messaged to send: {msg}")
-            # print_info(f"Sending encrypted message: {encrypted_msg}")
-            # self.send_msg(writer, "testing")
         else:
             print_error("Message rejected")
-        # writer.close()
-        # await writer.wait_closed()
+        print_info("End of pushkey_to_bot")
 
     def add_neighbor(self, host, port):
         hostport = f"{host}:{port}"
@@ -320,28 +307,6 @@ class RedKingBot:
             return
         self.neighbors[hostport] = {"host": host, "port": port, "virtual_address": None}
         print_info(f"Neighbor added: {self.neighbors[hostport]}")
-
-    # async def send_msg(self, writer, msg):
-    #    if not writer:
-    #        print_error("No writer received")
-    #        return
-    #    print_info(f"Sending message: {msg}")
-    #    try:
-    #        writer.write(msg.encode("utf8"))
-    #    except Exception as e:
-    #        print_error(f"Error sending message: {e}")
-    #    await writer.drain()
-    #    writer.close()
-    #    await writer.wait_closed()
-    # async def receive_msg(self, reader):
-    #    # if not reader:
-    #    #    print_error("No reader received")
-    #    #    return
-    #    default_read_size = 1024
-    #    response = await reader.read(default_read_size)
-    #    decoded_response = response.decode("utf8")
-    #    print_info(f"Received: [{decoded_response}]")
-    #    return decoded_response
 
 
 class RedKingBotMaster(RedKingBot):

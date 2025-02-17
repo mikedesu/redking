@@ -36,6 +36,14 @@ sleep 1;
 echo "list_neighbors" | nc localhost 6668;
 sleep 1;
 
+
+
+
+
+
+
+
+
 echo "exit" | nc localhost 6666;
 echo "exit" | nc localhost 6667;
 echo "exit" | nc localhost 6668;
