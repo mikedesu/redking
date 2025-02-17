@@ -76,8 +76,6 @@ class RedKingBot:
             print_info(f"Received request: {request} from {c_host}")
             bad_requests = 0
             await self.handle_request(request, reader, writer)
-            # writer.write(response.encode("utf8"))
-            # await writer.drain()
         writer.close()
         await writer.wait_closed()
 
@@ -85,7 +83,6 @@ class RedKingBot:
         if not writer:
             print_error("No writer received")
             return
-        # is_init = self.is_initialized()
         if not request:
             print_error("No request received")
             return
@@ -108,8 +105,78 @@ class RedKingBot:
             await self.pushkey_to_bot(cmd_parts)
         elif cmd == "pullkey":
             await self.pullkey_from_master(cmd_parts, writer)
+        elif cmd == "vaddr":
+            await self.get_vaddr(writer)
+        elif cmd == "get_vaddr":
+            await self.get_vaddr_from(cmd_parts, writer)
+        elif cmd == "add_neighbor":
+            await self.handle_add_neighbor(cmd_parts, writer)
         else:
             print_error("Unrecognized command")
+
+    async def handle_add_neighbor(self, cmd_parts, writer):
+        if len(cmd_parts) < 3:
+            print_error("add_neighbor command requires host and port")
+            return
+        host = cmd_parts[1]
+        port = int(cmd_parts[2])
+        self.add_neighbor(host, port)
+        writer.write("Neighbor added".encode("utf8"))
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    async def get_vaddr(self, writer):
+        print_info(f"Received vaddr request")
+        print_info(f"My virtual address: {self.virtual_address}")
+        # convert the virtual address to hex
+        hex_va = self.virtual_address.hex()
+        print_info(f"Hex virtual address: {hex_va}")
+        await self.send_msg(writer, hex_va)
+
+    async def get_vaddr_from(self, cmd_parts, writer):
+        if len(cmd_parts) < 2:
+            print_error("get_vaddr command requires host")
+            return
+        host = cmd_parts[1]
+        port = int(cmd_parts[2])
+
+        reader2 = None
+        writer2 = None
+        try:
+            reader2, writer2 = await asyncio.open_connection(host, port)
+        except Exception as e:
+            print_error(f"Error connecting to neighbor: {e}")
+            return
+
+        # send the virtual address request to the neighbor
+        msg = "vaddr"
+        await self.send_msg(writer2, msg)
+        response = await self.receive_msg(reader2)
+        print_info(f"Received: {response}")
+        # convert the hex virtual address to float
+        va = float.fromhex(response)
+        print_info(f"Received virtual address: {va}")
+        # save the virtual address
+        # check if the neighbor exists
+        neighbor = self.neighbors.get(host)
+        if not neighbor:
+            print_error(f"No neighbor found for host {host}")
+            return
+        neighbor["virtual_address"] = va
+        print_info(f"Neighbor virtual address saved: {neighbor}")
+
+        # neighbor = self.neighbors.get(host)
+        # if not neighbor:
+        #    print_error(f"No neighbor found for host {host}")
+        #    return
+        # send the virtual address to the client bot
+        # va = neighbor.get("virtual_address")
+        # if not va:
+        #    print_error(f"No virtual address found for host {host}")
+        #    return
+        # print_info(f"Sending virtual address to {host}")
+        # await self.send_msg(writer, va)
 
     async def pullkey_from_master(self, cmd_parts, writer):
         if self.is_master:
@@ -151,7 +218,7 @@ class RedKingBot:
             return
         # send the encrypted key to the bot
         msg = f"pullkey {self.crypto}"
-        self.send_msg(writer, msg)
+        await self.send_msg(writer, msg)
         # default_read_size = 1024
         # response = await reader.read(default_read_size)
         # decoded_response = response.decode("utf8")
@@ -163,12 +230,9 @@ class RedKingBot:
         if decrypted_response == self.test_msg:
             print_success("Message acknowledged!")
             # lets start by saving the host and port
-            neighbor = self.neighbors.get(host)
-            if neighbor:
-                print_info(f"Neighbor already exists: {neighbor}")
-                return
-            self.neighbors[host] = {"host": host, "port": port, "virtual_address": None}
-            print_info(f"Neighbor added: {self.neighbors[host]}")
+            self.add_neighbor(host, port)
+            # now we can just ask the neighbor for their virtual address
+            print_info("Requesting virtual address from neighbor")
             # at this point, we can probably exchange virtual address information
             # lets just mess around and send a new exchange of messages
             # because the virtual address is a float, we need to convert it to hex
@@ -186,16 +250,23 @@ class RedKingBot:
             # self.send_msg(writer, "testing")
         else:
             print_error("Message rejected")
-
         writer.close()
         await writer.wait_closed()
 
-    def send_msg(self, writer, msg):
+    def add_neighbor(self, host, port):
+        neighbor = self.neighbors.get(host)
+        if neighbor:
+            print_info(f"Neighbor already exists: {neighbor}")
+            return
+        self.neighbors[host] = {"host": host, "port": port, "virtual_address": None}
+        print_info(f"Neighbor added: {self.neighbors[host]}")
+
+    async def send_msg(self, writer, msg):
         if not writer:
             print_error("No writer received")
             return
         writer.write(msg.encode("utf8"))
-        # await writer.drain()
+        await writer.drain()
         # writer.close()
         # await writer.wait_closed()
 
