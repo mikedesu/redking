@@ -18,6 +18,14 @@ def print_error(msg):
     rich.print(f":pile_of_poo: {msg}")
 
 
+def generate_random_str(length=16):
+    return "".join(
+        random.choices(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", k=length
+        )
+    )
+
+
 class RedKingBot:
     def __init__(self, port, seed=0):
         self.is_master = False
@@ -32,7 +40,10 @@ class RedKingBot:
         self.priv = rsa.PrivateKey.load_pkcs1(self.private_key_bytes)
         self.neighbors = {}
         self.seed = seed
-        self.test_msg = "welcome to evildojo".encode("utf-8")
+        # self.test_msg = "welcome to evildojo".encode("utf-8")
+
+        random.seed(self.seed)
+        self.test_msg = generate_random_str().encode("utf-8")
         print_info(f"Initialized with virtual address {self.virtual_address}")
 
     def is_initialized(self):
@@ -40,14 +51,11 @@ class RedKingBot:
 
     async def run_server(self):
         print_info(f"Running server on port {self.port}")
-        self.server = await asyncio.start_server(
-            self.handle_client, "localhost", self.port
-        )
-        async with self.server:
-            await self.server.serve_forever()
-        self.server.close()
-        await self.server.wait_closed()
-        self.server = None
+        server = await asyncio.start_server(self.handle_client, "localhost", self.port)
+        async with server:
+            await server.serve_forever()
+        server.close()
+        await server.wait_closed()
 
     async def handle_client(self, reader, writer):
         print_info("Handling client")
@@ -64,9 +72,7 @@ class RedKingBot:
                 # print_error(f"Empty request from {c_host}")
                 bad_requests += 1
                 if bad_requests > 3:
-                    print_error(
-                        f"Too many bad requests, closing connection to {c_host}"
-                    )
+                    print_error(f"3 bad requests, closing connection to {c_host}")
                     break
                 continue
             print_info(f"Received request: {request} from {c_host}")
@@ -141,26 +147,37 @@ class RedKingBot:
             return
         host = cmd_parts[1]
         port = int(cmd_parts[2])
+        reader = None
+        writer = None
         try:
             reader, writer = await asyncio.open_connection(host, port)
-            msg = f"pullkey {self.crypto}"
-            writer.write(msg.encode("utf8"))
-            await writer.drain()
-            default_read_size = 1024
-            response = await reader.read(default_read_size)
-            decoded_response = response.decode("utf8")
-            print_info(f"Received: {decoded_response}")
-            f = Fernet(self.key)
-            decrypted_response = f.decrypt(response)
-            print_info(f"Decrypted response: {decrypted_response}")
-            # cmp_msg = self.test_msg
-            if decrypted_response == self.test_msg:
-                print_success("Message acknowledged!")
-                # at this point, we can probably exchange virtual address information
-            writer.close()
-            await writer.wait_closed()
         except Exception as e:
             print_error(f"Error connecting to bot: {e}")
+            return
+        # send the encrypted key to the bot
+        msg = f"pullkey {self.crypto}"
+        await self.send_msg(writer, msg)
+        default_read_size = 1024
+        response = await reader.read(default_read_size)
+        decoded_response = response.decode("utf8")
+        print_info(f"Received: {decoded_response}")
+        f = Fernet(self.key)
+        decrypted_response = f.decrypt(response)
+        print_info(f"Decrypted response: {decrypted_response}")
+        if decrypted_response == self.test_msg:
+            print_success("Message acknowledged!")
+            # at this point, we can probably exchange virtual address information
+        writer.close()
+        await writer.wait_closed()
+
+    async def send_msg(self, writer, msg):
+        if not writer:
+            print_error("No writer received")
+            return
+        writer.write(msg.encode("utf8"))
+        await writer.drain()
+        # writer.close()
+        # await writer.wait_closed()
 
 
 class RedKingBotMaster(RedKingBot):
