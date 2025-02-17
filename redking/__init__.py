@@ -19,7 +19,7 @@ def print_error(msg):
 
 
 class RedKingBot:
-    def __init__(self, port):
+    def __init__(self, port, seed=0):
         self.is_master = False
         self.server = None
         self.virtual_address = random.uniform(0.0, 1.0)
@@ -31,6 +31,8 @@ class RedKingBot:
         self.port = port
         self.priv = rsa.PrivateKey.load_pkcs1(self.private_key_bytes)
         self.neighbors = {}
+        self.seed = seed
+        self.test_msg = "welcome to evildojo".encode("utf-8")
         print_info(f"Initialized with virtual address {self.virtual_address}")
 
     def is_initialized(self):
@@ -41,14 +43,11 @@ class RedKingBot:
         self.server = await asyncio.start_server(
             self.handle_client, "localhost", self.port
         )
-        try:
-            async with self.server:
-                await self.server.serve_forever()
-            self.server.close()
-            await self.server.wait_closed()
-            self.server = None
-        except Exception as e:
-            print_error(f"Error running server: {e}")
+        async with self.server:
+            await self.server.serve_forever()
+        self.server.close()
+        await self.server.wait_closed()
+        self.server = None
 
     async def handle_client(self, reader, writer):
         print_info("Handling client")
@@ -120,10 +119,10 @@ class RedKingBot:
             self.key = decrypted_key
             print_info(f"Decrypted key: {self.key}")
             # lets test encrypting something
-            test_msg = "welcome to evildojo"
-            test_msg_bytes = test_msg.encode("utf-8")
+            # test_msg = "welcome to evildojo"
+            # test_msg_bytes = test_msg.encode("utf-8")
             f = Fernet(self.key)
-            encrypted_msg = f.encrypt(test_msg_bytes)
+            encrypted_msg = f.encrypt(self.test_msg)
             print_info(f"Encrypted message: {encrypted_msg}")
             print_info("Sending encrypted message to client")
             writer.write(encrypted_msg)
@@ -154,7 +153,8 @@ class RedKingBot:
             f = Fernet(self.key)
             decrypted_response = f.decrypt(response)
             print_info(f"Decrypted response: {decrypted_response}")
-            if decrypted_response == b"welcome to evildojo":
+            # cmp_msg = self.test_msg
+            if decrypted_response == self.test_msg:
                 print_success("Message acknowledged!")
                 # at this point, we can probably exchange virtual address information
             writer.close()
@@ -164,8 +164,8 @@ class RedKingBot:
 
 
 class RedKingBotMaster(RedKingBot):
-    def __init__(self, port):
-        super().__init__(port)
+    def __init__(self, port, seed=0):
+        super().__init__(port, seed)
         self.is_master = True
         self.crypto = None
         self.pub = None

@@ -6,15 +6,20 @@ import asyncio
 
 
 def usage():
-    print("Usage: python botmaster.py <port>")
+    print("Usage: python botmaster.py <port> <seed>")
     exit(1)
 
 
 if __name__ == "__main__":
-    if len(argv) < 2:
+    if len(argv) < 3:
         usage()
     port = int(argv[1])
+    seed = int(argv[2])
     # bot = RedKingBot(port)
-    botmaster = RedKingBotMaster(port)
+    botmaster = RedKingBotMaster(port, seed)
     botmaster.init_aes_key()
-    asyncio.run(botmaster.run_server())
+    try:
+        asyncio.run(botmaster.run_server())
+    except KeyboardInterrupt:
+        print("Exiting...")
+        exit(0)
