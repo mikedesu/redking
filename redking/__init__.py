@@ -41,23 +41,28 @@ class RedKingBot:
         self.server = await asyncio.start_server(
             self.handle_client, "localhost", self.port
         )
-        async with self.server:
-            await self.server.serve_forever()
-            await self.server.close()
+        try:
+            async with self.server:
+                await self.server.serve_forever()
+            self.server.close()
             await self.server.wait_closed()
-        self.server = None
+            self.server = None
+        except Exception as e:
+            print_error(f"Error running server: {e}")
 
     async def handle_client(self, reader, writer):
+        print_info("Handling client")
         request = None
         bad_requests = 0
         exit_commands = ["quit", "exit"]
         c_extra_info = writer.get_extra_info("peername")
         c_host = c_extra_info[0]
         while request not in exit_commands:
-            default_read_size = 128
+            default_read_size = 1024
             request = (await reader.read(default_read_size)).decode("utf8")
             request = request.strip()
             if len(request) == 0:
+                # print_error(f"Empty request from {c_host}")
                 bad_requests += 1
                 if bad_requests > 3:
                     print_error(
@@ -71,12 +76,13 @@ class RedKingBot:
             # writer.write(response.encode("utf8"))
             # await writer.drain()
         writer.close()
+        await writer.wait_closed()
 
     async def handle_request(self, request, reader, writer):
         if not writer:
             print_error("No writer received")
             return
-        is_init = self.is_initialized()
+        # is_init = self.is_initialized()
         if not request:
             print_error("No request received")
             return
@@ -121,6 +127,9 @@ class RedKingBot:
             print_info(f"Encrypted message: {encrypted_msg}")
             print_info("Sending encrypted message to client")
             writer.write(encrypted_msg)
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
         except Exception as e:
             print_error(f"Error decrypting key: {e}")
 
@@ -148,10 +157,10 @@ class RedKingBot:
             if decrypted_response == b"welcome to evildojo":
                 print_success("Message acknowledged!")
                 # at this point, we can probably exchange virtual address information
+            writer.close()
+            await writer.wait_closed()
         except Exception as e:
             print_error(f"Error connecting to bot: {e}")
-        await writer.close()
-        return await reader.close()
 
 
 class RedKingBotMaster(RedKingBot):
