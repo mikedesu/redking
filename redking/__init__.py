@@ -18,7 +18,7 @@ def print_error(msg):
     rich.print(f":pile_of_poo: {msg}")
 
 
-def generate_random_str(length=16):
+def generate_random_str(length=32):
     return "".join(
         random.choices(
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", k=length
@@ -40,8 +40,6 @@ class RedKingBot:
         self.priv = rsa.PrivateKey.load_pkcs1(self.private_key_bytes)
         self.neighbors = {}
         self.seed = seed
-        # self.test_msg = "welcome to evildojo".encode("utf-8")
-
         random.seed(self.seed)
         self.test_msg = generate_random_str().encode("utf-8")
         print_info(f"Initialized with virtual address {self.virtual_address}")
@@ -98,9 +96,9 @@ class RedKingBot:
         if not command_parts:
             print_error("No command parts")
             return
-        await self.handle_command(command_parts, reader, writer)
+        await self.handle_command(command_parts, writer)
 
-    async def handle_command(self, cmd_parts, reader, writer):
+    async def handle_command(self, cmd_parts, writer):
         cmd = cmd_parts[0]
         print_info(f"Received command: {cmd}")
         # first of all, only the master can receive 'raw' commands
@@ -124,9 +122,6 @@ class RedKingBot:
             decrypted_key = rsa.decrypt(encrypted_key, self.priv)
             self.key = decrypted_key
             print_info(f"Decrypted key: {self.key}")
-            # lets test encrypting something
-            # test_msg = "welcome to evildojo"
-            # test_msg_bytes = test_msg.encode("utf-8")
             f = Fernet(self.key)
             encrypted_msg = f.encrypt(self.test_msg)
             print_info(f"Encrypted message: {encrypted_msg}")
@@ -156,28 +151,63 @@ class RedKingBot:
             return
         # send the encrypted key to the bot
         msg = f"pullkey {self.crypto}"
-        await self.send_msg(writer, msg)
-        default_read_size = 1024
-        response = await reader.read(default_read_size)
-        decoded_response = response.decode("utf8")
-        print_info(f"Received: {decoded_response}")
+        self.send_msg(writer, msg)
+        # default_read_size = 1024
+        # response = await reader.read(default_read_size)
+        # decoded_response = response.decode("utf8")
+        response = await self.receive_msg(reader)
+        # print_info(f"Received: {decoded_response}")
         f = Fernet(self.key)
         decrypted_response = f.decrypt(response)
         print_info(f"Decrypted response: {decrypted_response}")
         if decrypted_response == self.test_msg:
             print_success("Message acknowledged!")
+            # lets start by saving the host and port
+            neighbor = self.neighbors.get(host)
+            if neighbor:
+                print_info(f"Neighbor already exists: {neighbor}")
+                return
+            self.neighbors[host] = {"host": host, "port": port, "virtual_address": None}
+            print_info(f"Neighbor added: {self.neighbors[host]}")
             # at this point, we can probably exchange virtual address information
+            # lets just mess around and send a new exchange of messages
+            # because the virtual address is a float, we need to convert it to hex
+            # hex_va = self.virtual_address.hex()
+            # print_info(f"Hex virtual address: {hex_va}")
+            # test reconstructing the virtual address
+            # this will be proof of readiness for exchange
+            # va = float.fromhex(hex_va)
+            # print_info(f"Reconstructed virtual address: {va}")
+            # we are ready to send to the client bot
+            # msg = f"exchange {hex_va}"
+            # encrypted_msg = f.encrypt(msg.encode("utf-8"))
+            # print_info(f"Messaged to send: {msg}")
+            # print_info(f"Sending encrypted message: {encrypted_msg}")
+            # self.send_msg(writer, "testing")
+        else:
+            print_error("Message rejected")
+
         writer.close()
         await writer.wait_closed()
 
-    async def send_msg(self, writer, msg):
+    def send_msg(self, writer, msg):
         if not writer:
             print_error("No writer received")
             return
         writer.write(msg.encode("utf8"))
-        await writer.drain()
+        # await writer.drain()
         # writer.close()
         # await writer.wait_closed()
+
+    async def receive_msg(self, reader):
+        # if not reader:
+        #    print_error("No reader received")
+        #    return
+        default_read_size = 1024
+        response = await reader.read(default_read_size)
+        decoded_response = response.decode("utf8")
+        print_info(f"Received: {decoded_response}")
+        return decoded_response
 
 
 class RedKingBotMaster(RedKingBot):
