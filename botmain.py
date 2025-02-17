@@ -22,3 +22,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("Exiting...")
         exit(0)
+    except asyncio.exceptions.CancelledError:
+        print("Exiting...")
+        exit(0)

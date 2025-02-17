@@ -22,4 +22,5 @@ if __name__ == "__main__":
         asyncio.run(botmaster.run_server())
     except KeyboardInterrupt:
         print("Exiting...")
-        exit(0)
+    except asyncio.exceptions.CancelledError:
+        print("Exiting...")
