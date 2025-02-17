@@ -39,7 +39,10 @@ class RedKingBot:
         self.crypto = None
         self.port = port
         self.priv = rsa.PrivateKey.load_pkcs1(self.private_key_bytes)
+
         self.neighbors = {}
+        self.neighbor_neighbors = {}
+
         self.seed = seed
         random.seed(self.seed)
         self.test_msg = generate_random_str().encode("utf-8")
@@ -129,6 +132,21 @@ class RedKingBot:
             await self.handle_add_neighbor(cmd_parts, writer)
         elif cmd == "list_neighbors":
             await self.list_neighbors(writer)
+        elif cmd == "get_list_neighbors":
+            await self.get_list_neighbors(cmd_parts, writer)
+        elif cmd == "check_for_swap":
+            await self.check_for_swap(cmd_parts, writer)
+        elif cmd == "swap":
+            print_info("Received swap command")
+            if len(cmd_parts) < 2:
+                print_error("swap command requires virtual address")
+                return
+            va = float(cmd_parts[1])
+            self.perform_swap_by_va(va)
+            writer.write("Virtual address saved\n".encode("utf-8"))
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
         # elif cmd == "exit":
         #    print_info("Exiting...")
         #    writer.close()
@@ -139,12 +157,241 @@ class RedKingBot:
         writer.close()
         await writer.wait_closed()
 
+    def perform_swap_by_va(self, va):
+        # given va, find the neighbor with the matching va
+        neighbor = None
+        for n in self.neighbors:
+            neighbor_info = self.neighbors[n]
+            if neighbor_info["virtual_address"] == va:
+                neighbor = neighbor_info
+                break
+        if not neighbor:
+            print_error(f"No neighbor found with virtual address: {va}")
+            return
+        host = neighbor["host"]
+        port = neighbor["port"]
+        self.perform_local_swap(host, port)
+
+    def perform_local_swap(self, host, port):
+        if not host or not port:
+            print_error("Invalid host or port")
+            return
+        if len(host) == 0:
+            print_error("Empty host")
+            return
+        if port == 0:
+            print_error("Invalid port")
+            return
+        hostport = f"{host}:{port}"
+        neighbor = self.neighbors.get(hostport)
+        if not neighbor:
+            print_error(f"No neighbor found for {hostport}")
+            return
+        neighbor_va = neighbor.get("virtual_address")
+        if not neighbor_va:
+            print_error(f"No virtual address found for {hostport}")
+            return
+        # swap the virtual addresses
+        print_info(f"Swapping virtual addresses with {hostport}...")
+        tmp_va = self.virtual_address
+        self.virtual_address = neighbor_va
+        neighbor["virtual_address"] = tmp_va
+        self.neighbors[hostport] = neighbor
+        their_neighbors = self.neighbor_neighbors.get(hostport)
+        if their_neighbors:
+            # im not sure this is what we want to do...
+            # oh right it is but the swap should def only occur for one of these neighbors
+            for n in their_neighbors:
+                neighbor_info = their_neighbors[n]
+                va = neighbor_info["virtual_address"]
+                if va == tmp_va:
+                    print_info(f"Found neighbor-of-neighbor to swap: {n}")
+                    neighbor_info["virtual_address"] = self.virtual_address
+                    their_neighbors[n] = neighbor_info
+                    self.neighbor_neighbors[hostport] = their_neighbors
+        print_info(f"Virtual address is now {self.virtual_address}")
+
+    async def check_for_swap(self, cmd_parts, writer):
+        # this assumes you have all the neighbors
+        # and their neighbors
+        # and their virtual addresses
+        if len(cmd_parts) < 3:
+            print_error("check_for_swap command requires host and port")
+            return
+        host = cmd_parts[1]
+        port = int(cmd_parts[2])
+        hostport = f"{host}:{port}"
+        neighbor = self.neighbors.get(hostport)
+        if not neighbor:
+            print_error(f"The requested hostport is not a neighbor: {hostport}")
+            return
+        their_neighbors = self.neighbor_neighbors.get(hostport)
+        if not their_neighbors:
+            print_error(f"No neighbor neighbors found for host {hostport}")
+            return
+        print_info(f"{hostport} neighbors: {their_neighbors}")
+        # now with our neighbors, and THEIR neighbors...
+        d1 = 1.0
+        d2 = 1.0
+        a = self.virtual_address
+        b = neighbor["virtual_address"]
+
+        for n in self.neighbors:
+            neighbor_info = self.neighbors[n]
+            va = neighbor_info["virtual_address"]
+            d1 *= abs(a - va)
+
+        for n in their_neighbors:
+            neighbor_info = self.neighbors[n]
+            va = neighbor_info["virtual_address"]
+            d1 *= abs(b - va)
+
+        for n in self.neighbors:
+            neighbor_info = self.neighbors[n]
+            va = neighbor_info["virtual_address"]
+            if b == va:
+                continue
+            d2 *= abs(b - va)
+
+        for n in their_neighbors:
+            neighbor_info = self.neighbors[n]
+            va = neighbor_info["virtual_address"]
+            if a == va:
+                continue
+            d2 *= abs(a - va)
+        # we have calculated our d1 and d2
+        # now we need to check if we should swap
+        print_info(f"d1: {d1}")
+        print_info(f"d2: {d2}")
+        if d1 <= d2:
+            # actually implement the swap
+            # we have to do more than simply swap the virtual addresses
+            # we will also have to update our neighbors list
+            self.perform_local_swap(host, port)
+            # we need to send a command to host:port to swap their virtual address with our old one
+            await self.perform_remote_swap(host, port, a)
+            outstr = f"Swapping {a} with {b}\n"
+            # print_info(outstr)
+            writer.write(outstr.encode("utf-8"))
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+            # swap vaddr's (to-be implemented)
+        else:
+            swap_probability = d1 / d2
+            print_info(f"Swap probability: {swap_probability}")
+            random_num = random.random()
+            print_info(f"Random number: {random_num}")
+            if random_num < swap_probability:
+                self.perform_local_swap(host, port)
+                outstr = f"Swapping with {hostport}"
+                # print_info(outstr)
+                writer.write(outstr.encode("utf-8"))
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
+                # swap vaddr's (to-be implemented)
+
+    async def perform_remote_swap(self, host, port, va):
+        if not host or not port:
+            print_error("Invalid host or port")
+            return
+        if len(host) == 0:
+            print_error("Empty host")
+            return
+        if port == 0:
+            print_error("Invalid port")
+            return
+        # reader = None
+        writer = None
+        try:
+            _, writer = await asyncio.open_connection(host, port)
+            # send the swap command
+            msg = f"swap {va}"
+            writer.write(msg.encode("utf8"))
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+        except Exception as e:
+            print_error(f"Error connecting to bot: {e}")
+            return
+
+    async def get_list_neighbors(self, cmd_parts, writer):
+        print_info(f"Received get_list_neighbors request")
+        if len(cmd_parts) < 3:
+            print_error("get_list_neighbors command requires host and port")
+            return
+        host = cmd_parts[1]
+        port = int(cmd_parts[2])
+        print_info(f"Connecting to {host}:{port}")
+        reader2 = None
+        writer2 = None
+        try:
+            reader2, writer2 = await asyncio.open_connection(host, port)
+            # send the list_neighbors request to the neighbor
+            writer2.write("list_neighbors".encode("utf-8"))
+            await writer2.drain()
+            response = await reader2.read(1024)
+            print_info(f"Received: [{response}]")
+            neighbor_list = response.decode("utf-8")
+            neighbors = neighbor_list.split("\n")
+            for neighbor in neighbors:
+                print_info(f"Neighbor: {neighbor}")
+                neighbor_parts = neighbor.split(":")
+                if len(neighbor_parts) < 3:
+                    print_error(f"Invalid neighbor: {neighbor}")
+                    continue
+                neighbor_host = neighbor_parts[0]
+                print_info(f"Neighbor host: {neighbor_host}")
+                neighbor_port = int(neighbor_parts[1])
+                print_info(f"Neighbor port: {neighbor_port}")
+                neighbor_va = float(neighbor_parts[2].strip())
+                print_info(f"Neighbor virtual address: {neighbor_va}")
+                # this is a "neighbor of neighbors"
+                # check if the neighbor exists
+                hostport = f"{neighbor_host}:{neighbor_port}"
+                neighbor2 = self.neighbor_neighbors.get(hostport)
+                if not neighbor2:
+                    # self.neighbor_neighbors[hostport] = {
+                    new_neighbor = {
+                        "host": neighbor_host,
+                        "port": neighbor_port,
+                        "virtual_address": neighbor_va,
+                    }
+
+                    neighbor_neighbors = self.neighbor_neighbors.get(hostport)
+                    if not neighbor_neighbors:
+                        self.neighbor_neighbors[hostport] = {}
+                    new_hostport = f"{neighbor_host}:{neighbor_port}"
+                    if new_hostport not in self.neighbor_neighbors[hostport]:
+                        print_info(f"Adding neighbor of neighbor: {new_hostport}")
+                        self.neighbor_neighbors[hostport][new_hostport] = new_neighbor
+                    else:
+                        print_info(
+                            f"Neighbor of neighbor already exists: {new_hostport}"
+                        )
+
+                    print_info(
+                        f"Neighbor of neighbor added: {self.neighbor_neighbors[hostport]}"
+                    )
+                else:
+                    print_info(f"Neighbor of neighbor already exists: {neighbor2}")
+            writer.write("Neighbor list received\n".encode("utf-8"))
+
+            writer.write(response)
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+        except Exception as e:
+            print_error(f"Exception in get_list_neighbors: {e}")
+            return
+
     async def list_neighbors(self, writer):
         print_info(f"Received list_neighbors request")
         # print_info(f"Neighbors: {self.neighbors}")
         neighbors_str = (
             "\n".join(
-                [f"{k}: {v['virtual_address']}" for k, v in self.neighbors.items()]
+                [f"{k}:{v['virtual_address']}" for k, v in self.neighbors.items()]
             )
             + "\n"
         )
