@@ -39,10 +39,8 @@ class RedKingBot:
         self.crypto = None
         self.port = port
         self.priv = rsa.PrivateKey.load_pkcs1(self.private_key_bytes)
-
         self.neighbors = {}
         self.neighbor_neighbors = {}
-
         self.seed = seed
         random.seed(self.seed)
         self.test_msg = generate_random_str().encode("utf-8")
@@ -67,7 +65,7 @@ class RedKingBot:
         await self.server.wait_closed()
 
     async def handle_client(self, reader, writer):
-        print_info("Handling client")
+        # print_info("Handling client")
         request = None
         bad_requests = 0
         exit_commands = ["quit", "exit"]
@@ -81,10 +79,10 @@ class RedKingBot:
                 # print_error(f"Empty request from {c_host}")
                 bad_requests += 1
                 if bad_requests > 3:
-                    print_error(f"Closing connection to {c_host}")
+                    # print_error(f"Closing connection to {c_host}")
                     break
                 continue
-            print_info(f"Received request: {request} from {c_host}")
+            # print_info(f"Received request: {request} from {c_host}")
             if request in exit_commands:
                 print_info(f"Received exit command from {c_host}")
                 writer.close()
@@ -116,7 +114,7 @@ class RedKingBot:
 
     async def handle_command(self, cmd_parts, writer):
         cmd = cmd_parts[0]
-        print_info(f"Received command: {cmd}")
+        # print_info(f"Received command: {cmd}")
         # first of all, only the master can receive 'raw' commands
         if len(cmd) == 0:
             print_error("Empty command")
@@ -135,7 +133,7 @@ class RedKingBot:
         elif cmd == "get_list_neighbors":
             await self.get_list_neighbors(cmd_parts, writer)
         elif cmd == "check_for_swap":
-            await self.check_for_swap(cmd_parts, writer)
+            await self.check_for_swap(writer)
         elif cmd == "swap":
             print_info("Received swap command")
             if len(cmd_parts) < 2:
@@ -153,7 +151,7 @@ class RedKingBot:
         #    await writer.wait_closed()
         else:
             print_error("Unrecognized command")
-        print_info("End of handle_command")
+        # print_info("End of handle_command")
         writer.close()
         await writer.wait_closed()
 
@@ -205,22 +203,27 @@ class RedKingBot:
                 neighbor_info = their_neighbors[n]
                 va = neighbor_info["virtual_address"]
                 if va == tmp_va:
-                    print_info(f"Found neighbor-of-neighbor to swap: {n}")
+                    # print_info(f"Found neighbor-of-neighbor to swap: {n}")
                     neighbor_info["virtual_address"] = self.virtual_address
                     their_neighbors[n] = neighbor_info
                     self.neighbor_neighbors[hostport] = their_neighbors
         print_info(f"Virtual address is now {self.virtual_address}")
 
-    async def check_for_swap(self, cmd_parts, writer):
+    async def check_for_swap(self, writer):
         # this assumes you have all the neighbors
         # and their neighbors
         # and their virtual addresses
-        if len(cmd_parts) < 3:
-            print_error("check_for_swap command requires host and port")
-            return
-        host = cmd_parts[1]
-        port = int(cmd_parts[2])
-        hostport = f"{host}:{port}"
+        # if len(cmd_parts) < 3:
+        #    print_error("check_for_swap command requires host and port")
+        #    return
+
+        # host = cmd_parts[1]
+        # port = int(cmd_parts[2])
+        # lets select a random neighbor
+        hostport = random.choice(list(self.neighbors.keys()))
+        host, port = hostport.split(":")
+        port = int(port)
+        # hostport = f"{host}:{port}"
         neighbor = self.neighbors.get(hostport)
         if not neighbor:
             print_error(f"The requested hostport is not a neighbor: {hostport}")
@@ -229,30 +232,26 @@ class RedKingBot:
         if not their_neighbors:
             print_error(f"No neighbor neighbors found for host {hostport}")
             return
-        print_info(f"{hostport} neighbors: {their_neighbors}")
+        # print_info(f"{hostport} neighbors: {their_neighbors}")
         # now with our neighbors, and THEIR neighbors...
         d1 = 1.0
         d2 = 1.0
         a = self.virtual_address
         b = neighbor["virtual_address"]
-
         for n in self.neighbors:
             neighbor_info = self.neighbors[n]
             va = neighbor_info["virtual_address"]
             d1 *= abs(a - va)
-
         for n in their_neighbors:
             neighbor_info = self.neighbors[n]
             va = neighbor_info["virtual_address"]
             d1 *= abs(b - va)
-
         for n in self.neighbors:
             neighbor_info = self.neighbors[n]
             va = neighbor_info["virtual_address"]
             if b == va:
                 continue
             d2 *= abs(b - va)
-
         for n in their_neighbors:
             neighbor_info = self.neighbors[n]
             va = neighbor_info["virtual_address"]
@@ -261,9 +260,9 @@ class RedKingBot:
             d2 *= abs(a - va)
         # we have calculated our d1 and d2
         # now we need to check if we should swap
-        print_info(f"d1: {d1}")
-        print_info(f"d2: {d2}")
-        if d1 <= d2:
+        # print_info(f"d1: {d1}")
+        # print_info(f"d2: {d2}")
+        if d2 <= d1:
             # actually implement the swap
             # we have to do more than simply swap the virtual addresses
             # we will also have to update our neighbors list
@@ -279,9 +278,12 @@ class RedKingBot:
             # swap vaddr's (to-be implemented)
         else:
             swap_probability = d1 / d2
-            print_info(f"Swap probability: {swap_probability}")
+            if swap_probability == 0:
+                print_info("No swap required")
+                return
+            # print_info(f"Swap probability: {swap_probability}")
             random_num = random.random()
-            print_info(f"Random number: {random_num}")
+            # print_info(f"Random number: {random_num}")
             if random_num < swap_probability:
                 self.perform_local_swap(host, port)
                 outstr = f"Swapping with {hostport}"
@@ -336,6 +338,8 @@ class RedKingBot:
             neighbor_list = response.decode("utf-8")
             neighbors = neighbor_list.split("\n")
             for neighbor in neighbors:
+                if len(neighbor) == 0:
+                    continue
                 print_info(f"Neighbor: {neighbor}")
                 neighbor_parts = neighbor.split(":")
                 if len(neighbor_parts) < 3:
@@ -370,6 +374,9 @@ class RedKingBot:
                         print_info(
                             f"Neighbor of neighbor already exists: {new_hostport}"
                         )
+                        # update it anyway
+                        print_info(f"Adding neighbor of neighbor: {new_hostport}")
+                        self.neighbor_neighbors[hostport][new_hostport] = new_neighbor
 
                     print_info(
                         f"Neighbor of neighbor added: {self.neighbor_neighbors[hostport]}"
