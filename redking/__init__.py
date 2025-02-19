@@ -4,19 +4,23 @@ from cryptography.fernet import Fernet
 import rsa
 import base64
 import rich
-import sys
+
+# import sys
 
 
 def print_info(msg):
     rich.print(f":pizza: {msg}")
+    # print(f"🍕 {msg}")
 
 
 def print_success(msg):
     rich.print(f":thumbs_up: {msg}")
+    # print(f"👍 {msg}")
 
 
 def print_error(msg):
     rich.print(f":pile_of_poo: {msg}")
+    # print(f"💩 {msg}")
 
 
 def generate_random_str(length=32):
@@ -76,13 +80,11 @@ class RedKingBot:
             request = (await reader.read(default_read_size)).decode("utf8")
             request = request.strip()
             if len(request) == 0:
-                # print_error(f"Empty request from {c_host}")
                 bad_requests += 1
                 if bad_requests > 3:
-                    # print_error(f"Closing connection to {c_host}")
+                    print_error(f"Closing connection to {c_host}")
                     break
                 continue
-            # print_info(f"Received request: {request} from {c_host}")
             if request in exit_commands:
                 print_info(f"Received exit command from {c_host}")
                 writer.close()
@@ -92,11 +94,13 @@ class RedKingBot:
                 await self.server.wait_closed()
             else:
                 bad_requests = 0
-                await self.handle_request(request, reader, writer)
+                # await self.handle_request(request, reader, writer)
+                await self.handle_request(request, writer)
         writer.close()
         await writer.wait_closed()
 
-    async def handle_request(self, request, reader, writer):
+    # async def handle_request(self, request, reader, writer):
+    async def handle_request(self, request, writer):
         if not writer:
             print_error("No writer received")
             return
@@ -135,23 +139,37 @@ class RedKingBot:
         elif cmd == "check_for_swap":
             await self.check_for_swap(writer)
         elif cmd == "swap":
-            print_info("Received swap command")
-            if len(cmd_parts) < 2:
-                print_error("swap command requires virtual address")
-                return
-            va = float(cmd_parts[1])
-            self.perform_swap_by_va(va)
-            writer.write("Virtual address saved\n".encode("utf-8"))
-            await writer.drain()
-            writer.close()
-            await writer.wait_closed()
-        # elif cmd == "exit":
-        #    print_info("Exiting...")
-        #    writer.close()
-        #    await writer.wait_closed()
+            await self.handle_swap(cmd_parts, writer)
+            # print_info("Received swap command")
+            # if len(cmd_parts) < 2:
+            #    print_error("swap command requires virtual address")
+            #    return
+            # va = float(cmd_parts[1])
+            # self.perform_swap_by_va(va)
+            # writer.write("Virtual address saved\n".encode("utf-8"))
+            # await writer.drain()
+            # writer.close()
+            # await writer.wait_closed()
         else:
             print_error("Unrecognized command")
         # print_info("End of handle_command")
+        writer.close()
+        await writer.wait_closed()
+
+    async def handle_swap(self, cmd_parts, writer):
+        print_info("Received swap command")
+        if len(cmd_parts) < 2:
+            print_error("swap command requires virtual address")
+            return
+        va = None
+        try:
+            va = float(cmd_parts[1])
+        except Exception as e:
+            print_error(f"Invalid virtual address: {e}")
+            return
+        self.perform_swap_by_va(va)
+        writer.write("Virtual address saved\n".encode("utf-8"))
+        await writer.drain()
         writer.close()
         await writer.wait_closed()
 
@@ -173,41 +191,55 @@ class RedKingBot:
     def perform_local_swap(self, host, port):
         if not host or not port:
             print_error("Invalid host or port")
-            return
+            return False
         if len(host) == 0:
             print_error("Empty host")
-            return
+            return False
         if port == 0:
             print_error("Invalid port")
-            return
+            return False
         hostport = f"{host}:{port}"
         neighbor = self.neighbors.get(hostport)
         if not neighbor:
             print_error(f"No neighbor found for {hostport}")
-            return
+            return False
         neighbor_va = neighbor.get("virtual_address")
         if not neighbor_va:
             print_error(f"No virtual address found for {hostport}")
-            return
+            return False
         # swap the virtual addresses
         print_info(f"Swapping virtual addresses with {hostport}...")
+        # our old virtual address
         tmp_va = self.virtual_address
+        # our virtual address is now the neighbor's virtual address
         self.virtual_address = neighbor_va
+        # we update our local map with the new virtual address
         neighbor["virtual_address"] = tmp_va
         self.neighbors[hostport] = neighbor
+        # we also need to update our own entry in our local map of the neighbor's own neighbor's list
         their_neighbors = self.neighbor_neighbors.get(hostport)
+        # updating
         if their_neighbors:
+            their_neighbors_copy = their_neighbors.copy()
             # im not sure this is what we want to do...
             # oh right it is but the swap should def only occur for one of these neighbors
-            for n in their_neighbors:
-                neighbor_info = their_neighbors[n]
+            for n in their_neighbors_copy:
+                neighbor_info = their_neighbors_copy[n]
                 va = neighbor_info["virtual_address"]
+                # if the neighbor of our neighbor is us, we need to update THAT virtual address
                 if va == tmp_va:
-                    # print_info(f"Found neighbor-of-neighbor to swap: {n}")
+                    print_info(
+                        f"Found a neighbor equal to ourself, updating map from {va} to {self.virtual_address}"
+                    )
                     neighbor_info["virtual_address"] = self.virtual_address
                     their_neighbors[n] = neighbor_info
-                    self.neighbor_neighbors[hostport] = their_neighbors
-        print_info(f"Virtual address is now {self.virtual_address}")
+            # at the very end, we update our local map of the neighbor's own neighbor's list
+            self.neighbor_neighbors[hostport] = their_neighbors
+            return True
+            # print_info(f"Virtual address is now {self.virtual_address}")
+        else:
+            print_error(f"No their_neighbors found for {hostport}")
+        return False
 
     async def check_for_swap(self, writer):
         # this assumes you have all the neighbors
@@ -216,10 +248,6 @@ class RedKingBot:
         # if len(cmd_parts) < 3:
         #    print_error("check_for_swap command requires host and port")
         #    return
-
-        # host = cmd_parts[1]
-        # port = int(cmd_parts[2])
-        # lets select a random neighbor
         hostport = random.choice(list(self.neighbors.keys()))
         host, port = hostport.split(":")
         port = int(port)
@@ -230,7 +258,7 @@ class RedKingBot:
             return
         their_neighbors = self.neighbor_neighbors.get(hostport)
         if not their_neighbors:
-            print_error(f"No neighbor neighbors found for host {hostport}")
+            print_error(f"The requested neighbor has no neighbors: {hostport}")
             return
         # print_info(f"{hostport} neighbors: {their_neighbors}")
         # now with our neighbors, and THEIR neighbors...
@@ -238,43 +266,44 @@ class RedKingBot:
         d2 = 1.0
         a = self.virtual_address
         b = neighbor["virtual_address"]
+        print_info(f"Checking swap between {a} and {b}")
+        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         for n in self.neighbors:
-            neighbor_info = self.neighbors[n]
-            va = neighbor_info["virtual_address"]
+            va = self.neighbors[n]["virtual_address"]
             d1 *= abs(a - va)
+        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         for n in their_neighbors:
-            neighbor_info = self.neighbors[n]
-            va = neighbor_info["virtual_address"]
+            va = their_neighbors[n]["virtual_address"]
             d1 *= abs(b - va)
+        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         for n in self.neighbors:
-            neighbor_info = self.neighbors[n]
-            va = neighbor_info["virtual_address"]
+            va = self.neighbors[n]["virtual_address"]
             if b == va:
                 continue
             d2 *= abs(b - va)
+        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         for n in their_neighbors:
-            neighbor_info = self.neighbors[n]
-            va = neighbor_info["virtual_address"]
+            va = their_neighbors[n]["virtual_address"]
             if a == va:
                 continue
             d2 *= abs(a - va)
         # we have calculated our d1 and d2
         # now we need to check if we should swap
-        # print_info(f"d1: {d1}")
-        # print_info(f"d2: {d2}")
+        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         if d2 <= d1:
             # actually implement the swap
             # we have to do more than simply swap the virtual addresses
             # we will also have to update our neighbors list
-            self.perform_local_swap(host, port)
+            swap_result = self.perform_local_swap(host, port)
             # we need to send a command to host:port to swap their virtual address with our old one
-            await self.perform_remote_swap(host, port, a)
-            outstr = f"Swapping {a} with {b}\n"
-            # print_info(outstr)
-            writer.write(outstr.encode("utf-8"))
-            await writer.drain()
-            writer.close()
-            await writer.wait_closed()
+            if swap_result:
+                await self.perform_remote_swap(host, port, a)
+                outstr = f"Swapping {a} with {b}\n"
+                # print_info(outstr)
+                writer.write(outstr.encode("utf-8"))
+                await writer.drain()
+                writer.close()
+                await writer.wait_closed()
             # swap vaddr's (to-be implemented)
         else:
             swap_probability = d1 / d2
@@ -285,14 +314,14 @@ class RedKingBot:
             random_num = random.random()
             # print_info(f"Random number: {random_num}")
             if random_num < swap_probability:
-                self.perform_local_swap(host, port)
-                outstr = f"Swapping with {hostport}"
-                # print_info(outstr)
-                writer.write(outstr.encode("utf-8"))
-                await writer.drain()
-                writer.close()
-                await writer.wait_closed()
-                # swap vaddr's (to-be implemented)
+                swap_result = self.perform_local_swap(host, port)
+                if swap_result:
+                    await self.perform_remote_swap(host, port, a)
+                    outstr = f"Swapping {a} with {b}\n"
+                    writer.write(outstr.encode("utf-8"))
+                    await writer.drain()
+                    writer.close()
+                    await writer.wait_closed()
 
     async def perform_remote_swap(self, host, port, va):
         if not host or not port:
@@ -336,6 +365,7 @@ class RedKingBot:
             response = await reader2.read(1024)
             print_info(f"Received: [{response}]")
             neighbor_list = response.decode("utf-8")
+            # we should probably ship/receive the neighbors list as a JSON for easier serialization etc
             neighbors = neighbor_list.split("\n")
             for neighbor in neighbors:
                 if len(neighbor) == 0:
@@ -347,22 +377,41 @@ class RedKingBot:
                     continue
                 neighbor_host = neighbor_parts[0]
                 print_info(f"Neighbor host: {neighbor_host}")
-                neighbor_port = int(neighbor_parts[1])
+                if len(neighbor_host) == 0:
+                    print_error(f"Invalid neighbor host: {neighbor_host}")
+                    continue
+                neighbor_port = neighbor_parts[1]
+                if len(neighbor_port) == 0:
+                    print_error(f"Invalid neighbor port: {neighbor_port}")
+                    continue
+                neighbor_port = int(neighbor_port)
                 print_info(f"Neighbor port: {neighbor_port}")
-                neighbor_va = float(neighbor_parts[2].strip())
+                neighbor_va = neighbor_parts[2]
+                if not neighbor_va:
+                    print_error(f"Invalid neighbor virtual address: {neighbor_va}")
+                    continue
+                neighbor_va = neighbor_va.strip()
+                if len(neighbor_va) == 0:
+                    print_error(f"Invalid neighbor virtual address: {neighbor_va}")
+                    continue
+                # print_info(
+                #    f"Neighbor virtual address before float conversion: {neighbor_va}"
+                # )
+                if not neighbor_va:
+                    print_error(f"Invalid neighbor virtual address: {neighbor_va}")
+                    continue
+                neighbor_va = float(neighbor_va)
                 print_info(f"Neighbor virtual address: {neighbor_va}")
                 # this is a "neighbor of neighbors"
                 # check if the neighbor exists
                 hostport = f"{neighbor_host}:{neighbor_port}"
                 neighbor2 = self.neighbor_neighbors.get(hostport)
                 if not neighbor2:
-                    # self.neighbor_neighbors[hostport] = {
                     new_neighbor = {
                         "host": neighbor_host,
                         "port": neighbor_port,
                         "virtual_address": neighbor_va,
                     }
-
                     neighbor_neighbors = self.neighbor_neighbors.get(hostport)
                     if not neighbor_neighbors:
                         self.neighbor_neighbors[hostport] = {}
@@ -377,14 +426,12 @@ class RedKingBot:
                         # update it anyway
                         print_info(f"Adding neighbor of neighbor: {new_hostport}")
                         self.neighbor_neighbors[hostport][new_hostport] = new_neighbor
-
                     print_info(
                         f"Neighbor of neighbor added: {self.neighbor_neighbors[hostport]}"
                     )
                 else:
                     print_info(f"Neighbor of neighbor already exists: {neighbor2}")
-            writer.write("Neighbor list received\n".encode("utf-8"))
-
+            # writer.write("Neighbor list received\n".encode("utf-8"))
             writer.write(response)
             await writer.drain()
             writer.close()

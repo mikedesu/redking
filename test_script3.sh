@@ -1,48 +1,55 @@
 
-
-# 6666 = A
+# 6666 = A (botmaster)
 # 6667 = B
 # 6668 = C
+# 6669 = D
 
-# A <-> B <-> C
+# A - B
+#     |\
+#     | \
+#     C--D
 
-# first we have to build the network... 
-echo "add_neighbor localhost 6667" | nc localhost 6666; # A <-> B
-echo "add_neighbor localhost 6666" | nc localhost 6667; # B <-> A
-echo "add_neighbor localhost 6668" | nc localhost 6667; # B <-> C
-echo "add_neighbor localhost 6667" | nc localhost 6668; # C <-> B
+echo "add_neighbor localhost 6667" | nc localhost 6666;
+echo "add_neighbor localhost 6666" | nc localhost 6667;
+echo "add_neighbor localhost 6668" | nc localhost 6667;
+echo "add_neighbor localhost 6669" | nc localhost 6667;
+echo "add_neighbor localhost 6667" | nc localhost 6668;
+echo "add_neighbor localhost 6669" | nc localhost 6668;
+echo "add_neighbor localhost 6667" | nc localhost 6669;
+echo "add_neighbor localhost 6668" | nc localhost 6669;
 
-# then we have to tell each node to get each others vaddr
-echo "get_vaddr localhost 6667" | nc localhost 6666; # A <-> B
-echo "get_vaddr localhost 6666" | nc localhost 6667; # B <-> A
-echo "get_vaddr localhost 6668" | nc localhost 6667; # B <-> C
-echo "get_vaddr localhost 6667" | nc localhost 6668; # C <-> B
-
-
-# then we have to tell each node to get the list of neighbors
-echo "get_list_neighbors localhost 6667" | nc localhost 6666; # A <-> B
-echo "get_list_neighbors localhost 6666" | nc localhost 6667; # B <-> A
-echo "get_list_neighbors localhost 6668" | nc localhost 6667; # B <-> C
-echo "get_list_neighbors localhost 6667" | nc localhost 6668; # C <-> B
+echo "get_list_neighbors localhost 6667" | nc localhost 6666;
+echo "get_list_neighbors localhost 6666" | nc localhost 6667;
+echo "get_list_neighbors localhost 6668" | nc localhost 6667;
+echo "get_list_neighbors localhost 6669" | nc localhost 6667;
+echo "get_list_neighbors localhost 6667" | nc localhost 6668;
+echo "get_list_neighbors localhost 6669" | nc localhost 6668;
+echo "get_list_neighbors localhost 6667" | nc localhost 6669;
+echo "get_list_neighbors localhost 6668" | nc localhost 6669;
 
 # now that we have all the neighbors advertises >:)
+# its time...
+# to do the sandberg swap!
+# but first
+# we must build the primitives
 
-while true; do 
+# with all the neighbor-neighbors, we can calculate the values we need
+
+while true; do
     echo "check_for_swap" | nc localhost 6666;
-    #sleep 1;
-    echo "check_for_swap" | nc localhost 6667;
-    #sleep 1;
-    echo "check_for_swap" | nc localhost 6668;
-    #sleep 1;
     sleep 1;
-    echo "get_list_neighbors localhost 6667" | nc localhost 6666; # A <-> B
-    echo "get_list_neighbors localhost 6666" | nc localhost 6667; # B <-> A
-    echo "get_list_neighbors localhost 6668" | nc localhost 6667; # B <-> C
-    echo "get_list_neighbors localhost 6667" | nc localhost 6668; # C <-> B
+    echo "check_for_swap" | nc localhost 6667;
+    sleep 1;
+    echo "check_for_swap" | nc localhost 6668;
+    sleep 1;
+    echo "check_for_swap" | nc localhost 6669;
+    sleep 1;
 done
 
 
-
+#echo "exit" | nc localhost 6666;
+#echo "exit" | nc localhost 6667;
+#echo "exit" | nc localhost 6668;
 
 
 
