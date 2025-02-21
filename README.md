@@ -16,6 +16,10 @@ The intent is to automate a lot of what is being done there right now.
 
 -----
 
+[![asciicast](https://asciinema.org/a/EhsynoKYncB47vZ678fL5pAo2.svg)](https://asciinema.org/a/EhsynoKYncB47vZ678fL5pAo2)
+
+-----
+
 ## TODO
 
 - [ ] Only the botmaster should receive raw commands and even then...
