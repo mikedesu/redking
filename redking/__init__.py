@@ -4,23 +4,23 @@ from cryptography.fernet import Fernet
 import rsa
 import base64
 import rich
-
-# import sys
+from rich.tree import Tree
+from datetime import datetime
 
 
 def print_info(msg):
-    rich.print(f":pizza: {msg}")
-    # print(f"🍕 {msg}")
+    curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":pizza: {curtime} {msg}")
 
 
 def print_success(msg):
-    rich.print(f":thumbs_up: {msg}")
-    # print(f"👍 {msg}")
+    curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":thumbs_up: {curtime} {msg}")
 
 
 def print_error(msg):
-    rich.print(f":pile_of_poo: {msg}")
-    # print(f"💩 {msg}")
+    curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":pile_of_poo: {curtime} {msg}")
 
 
 def generate_random_str(length=32):
@@ -38,7 +38,6 @@ class RedKingBot:
         self.virtual_address = random.uniform(0.0, 1.0)
         self.key = None
         self.private_key_bytes = b"-----BEGIN RSA PRIVATE KEY-----\nMIIBPQIBAAJBAI1Ve4/DE8omJP58g4l1tmlIox6i866I3rwKTH71UwYzdR+wO//n\nndxypAFk/8z4KA3JN0JdeBZ4zXluS0u+yB0CAwEAAQJAPAKm42TuWzAVFyVhaJVd\nrZiVAmYoV9xvzqIE1wdtRzbFKVPIXlAfJIoOFb5u+QQ8k96zAC6xbuc9Tl54lLhX\nwQIjAJkluAmy4dW75s63d/rS1hMZ0UI5zXVmHU3pmmBCc83K2fECHwDsQLVSJa7h\nZBcplVu+ld4H2QRS2WJajpfJ667/RO0CIwCUlDGOx0uurtPoLbtrTu1+LogEdkvM\n4DsCAedSCGaNe4YhAh8A1dOrSPJ6Wd1xaV2Zb+HM12WAGExQTI4Kq+L4vGnxAiJ+\n/05NOZ9gfWGFrOHfKI8GIlYPjeDlxud/ZkijKAuO9SjX\n-----END RSA PRIVATE KEY-----"
-        # self.private_key_bytes = b"-----BEGIN RSA PRIVATE KEY-----\nMIIBPQIBAAJBAI1Ve4/DE8omJP58g4l1tmlIox6i866I3rwKTH71UwYzdR+wO//n\nndxypAFk/8z4KA3JN0JdeBZ4zXluS0u+yB0CAwEAAQJAPAKm42TuWzAVFyVhaJVd\nrZiVAmYoV9xvzqIE1wdtRzbFKVPIXlAfJIoOFb5u+QQ8k96zAC6xbuc9Tl54lLhX\nwQIjAJkluAmy4dW75s63d/rS1hMZ0UI5zXVmHU3pmmBCc83K2fECHwDsQLVSJa7h\nZBcplVu+ld4H2QRS2WJajpfJ667/RO0CIwCUlDGOx0uurtPoLbtrTu1+LogEdkvM\n4DsCAedSCGaNe4YhAh8A1dOrSPJ6Wd1xaV2Zb+HM12WAGExQTI4Kq+L4vGnxAiJ+\n/05NOZ9gfWGFrOHfKI8GIlYPjeDlxud/ZkijKAuO9SjX\n-----END RSA PRIVATE KEY-----"
         self.pub = None
         self.crypto = None
         self.port = port
@@ -49,7 +48,9 @@ class RedKingBot:
         random.seed(self.seed)
         self.test_msg = generate_random_str().encode("utf-8")
         self.server_coroutine = None
+        self.total_swaps = 0
         print_info(f"Initialized with virtual address {self.virtual_address}")
+        self.tree = Tree(str(self.virtual_address))
 
     def is_initialized(self):
         return self.key is not None
@@ -69,7 +70,6 @@ class RedKingBot:
         await self.server.wait_closed()
 
     async def handle_client(self, reader, writer):
-        # print_info("Handling client")
         request = None
         bad_requests = 0
         exit_commands = ["quit", "exit"]
@@ -82,7 +82,7 @@ class RedKingBot:
             if len(request) == 0:
                 bad_requests += 1
                 if bad_requests > 3:
-                    print_error(f"Closing connection to {c_host}")
+                    # print_error(f"Closing connection to {c_host}")
                     break
                 continue
             if request in exit_commands:
@@ -118,7 +118,6 @@ class RedKingBot:
 
     async def handle_command(self, cmd_parts, writer):
         cmd = cmd_parts[0]
-        # print_info(f"Received command: {cmd}")
         # first of all, only the master can receive 'raw' commands
         if len(cmd) == 0:
             print_error("Empty command")
@@ -157,7 +156,7 @@ class RedKingBot:
         await writer.wait_closed()
 
     async def handle_swap(self, cmd_parts, writer):
-        print_info("Received swap command")
+        # print_info("Received swap command")
         if len(cmd_parts) < 2:
             print_error("swap command requires virtual address")
             return
@@ -181,6 +180,7 @@ class RedKingBot:
             if neighbor_info["virtual_address"] == va:
                 neighbor = neighbor_info
                 break
+        # for some reason, we might hit this even if all nodes are connected to this node, not sure why...
         if not neighbor:
             print_error(f"No neighbor found with virtual address: {va}")
             return
@@ -208,13 +208,21 @@ class RedKingBot:
             print_error(f"No virtual address found for {hostport}")
             return False
         # swap the virtual addresses
-        print_info(f"Swapping virtual addresses with {hostport}...")
         # our old virtual address
         tmp_va = self.virtual_address
         # our virtual address is now the neighbor's virtual address
         self.virtual_address = neighbor_va
         # we update our local map with the new virtual address
         neighbor["virtual_address"] = tmp_va
+        # print_info(f"Swapped {tmp_va} with {neighbor_va}")
+        self.total_swaps += 1
+        rich.console.Console().clear()
+        print_info(
+            f"Virtual address is now {self.virtual_address}. Total swaps: {self.total_swaps}"
+        )
+
+        # rich.print(self.tree)
+
         self.neighbors[hostport] = neighbor
         # we also need to update our own entry in our local map of the neighbor's own neighbor's list
         their_neighbors = self.neighbor_neighbors.get(hostport)
@@ -228,15 +236,23 @@ class RedKingBot:
                 va = neighbor_info["virtual_address"]
                 # if the neighbor of our neighbor is us, we need to update THAT virtual address
                 if va == tmp_va:
-                    print_info(
-                        f"Found a neighbor equal to ourself, updating map from {va} to {self.virtual_address}"
-                    )
+                    # print_info(
+                    #    f"Found a neighbor equal to ourself, updating map from {va} to {self.virtual_address}"
+                    # )
                     neighbor_info["virtual_address"] = self.virtual_address
                     their_neighbors[n] = neighbor_info
             # at the very end, we update our local map of the neighbor's own neighbor's list
             self.neighbor_neighbors[hostport] = their_neighbors
+
+            tree = Tree(str(self.virtual_address))
+            for n in self.neighbors:
+                neighbor_info = self.neighbors[n]
+                va = neighbor_info["virtual_address"]
+                tree.add(str(va))
+
+            rich.print(tree)
+
             return True
-            # print_info(f"Virtual address is now {self.virtual_address}")
         else:
             print_error(f"No their_neighbors found for {hostport}")
         return False
@@ -266,30 +282,34 @@ class RedKingBot:
         d2 = 1.0
         a = self.virtual_address
         b = neighbor["virtual_address"]
-        print_info(f"Checking swap between {a} and {b}")
-        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
+        # print_info(f"Checking swap between {a} and {b}")
+        # print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         for n in self.neighbors:
-            va = self.neighbors[n]["virtual_address"]
+            va = float(self.neighbors[n]["virtual_address"])
+            if a == va:
+                continue
             d1 *= abs(a - va)
-        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
+        # print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         for n in their_neighbors:
-            va = their_neighbors[n]["virtual_address"]
+            va = float(their_neighbors[n]["virtual_address"])
+            if b == va:
+                continue
             d1 *= abs(b - va)
-        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
+        # print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         for n in self.neighbors:
-            va = self.neighbors[n]["virtual_address"]
+            va = float(self.neighbors[n]["virtual_address"])
             if b == va:
                 continue
             d2 *= abs(b - va)
-        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
+        # print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         for n in their_neighbors:
-            va = their_neighbors[n]["virtual_address"]
+            va = float(their_neighbors[n]["virtual_address"])
             if a == va:
                 continue
             d2 *= abs(a - va)
         # we have calculated our d1 and d2
         # now we need to check if we should swap
-        print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
+        # print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
         if d2 <= d1:
             # actually implement the swap
             # we have to do more than simply swap the virtual addresses
@@ -347,6 +367,7 @@ class RedKingBot:
             print_error(f"Error connecting to bot: {e}")
             return
 
+    # this function actually attempts to open a new connection to the given host and port
     async def get_list_neighbors(self, cmd_parts, writer):
         print_info(f"Received get_list_neighbors request")
         if len(cmd_parts) < 3:
@@ -461,7 +482,8 @@ class RedKingBot:
         host = cmd_parts[1]
         port = int(cmd_parts[2])
         self.add_neighbor(host, port)
-        writer.write("Neighbor added\n".encode("utf-8"))
+        # writer.write("Neighbor added\n".encode("utf-8"))
+        writer.write("OK\n".encode("utf-8"))
         await writer.drain()
         writer.close()
         await writer.wait_closed()
@@ -516,7 +538,8 @@ class RedKingBot:
             self.neighbors[hostport] = neighbor
             print_info(f"Neighbor virtual address saved: {neighbor}")
             # await self.send_msg(writer, "Virtual address saved\n")
-            writer.write("Virtual address saved\n".encode("utf-8"))
+            # writer.write("Virtual address saved\n".encode("utf-8"))
+            writer.write("OK\n".encode("utf-8"))
             await writer.drain()
             writer.close()
             await writer.wait_closed()
