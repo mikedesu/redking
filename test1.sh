@@ -13,15 +13,15 @@
 
 # with all the neighbor-neighbors, we can calculate the values we need
 
-ct=0;
+#ct=0;
 while true; do
     echo "check_for_swap" | nc localhost 6666;
+    sleep 0.5;
     echo "check_for_swap" | nc localhost 6667;
+    sleep 0.5;
     echo "check_for_swap" | nc localhost 6668;
-    ct=$((ct+1));
-    if [ $((ct%100)) -eq 0 ]; then 
-        sleep 1;
-    fi;
+    #ct=$((ct+1));
+    sleep 0.5;
 done
 
 

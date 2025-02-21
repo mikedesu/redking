@@ -218,7 +218,7 @@ class RedKingBot:
         self.total_swaps += 1
         rich.console.Console().clear()
         print_info(
-            f"Virtual address is now {self.virtual_address}. Total swaps: {self.total_swaps}"
+            f"Virtual address is now {self.virtual_address:.8f}. Total swaps: {self.total_swaps}"
         )
 
         # rich.print(self.tree)
