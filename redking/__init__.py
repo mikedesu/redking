@@ -23,6 +23,11 @@ def print_error(msg):
     rich.print(f":pile_of_poo: {curtime} {msg}")
 
 
+def print_todo(msg):
+    curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":construction: {curtime} {msg}")
+
+
 def generate_random_str(length=32):
     return "".join(
         random.choices(
@@ -62,6 +67,7 @@ class RedKingBot:
         )
         async with self.server:
             try:
+                print_info("Server started")
                 await self.server.serve_forever()
             except Exception as e:
                 print_error(f"Error running server: {e}")
@@ -70,30 +76,16 @@ class RedKingBot:
         await self.server.wait_closed()
 
     async def handle_client(self, reader, writer):
-        request = None
-        bad_requests = 0
-        exit_commands = ["quit", "exit"]
-        c_extra_info = writer.get_extra_info("peername")
-        c_host = c_extra_info[0]
-        while request not in exit_commands:
-            default_read_size = 1024
-            request = (await reader.read(default_read_size)).decode("utf8")
-            request = request.strip()
-            if len(request) == 0:
-                bad_requests += 1
-                if bad_requests > 3:
-                    break
-                continue
-            # if request in exit_commands:
-            #    print_info(f"Received exit command from {c_host}")
-            #    writer.close()
-            #    await writer.wait_closed()
-            #    # cancel the server coroutine
-            #    self.server.close()
-            #    await self.server.wait_closed()
-            # else:
-            bad_requests = 0
-            await self.handle_request(request, writer)
+        # request = None
+        # bad_requests = 0
+        # exit_commands = ["quit", "exit"]
+        # c_extra_info = writer.get_extra_info("peername")
+        # c_host = c_extra_info[0]
+        # while request not in exit_commands:
+        # print_info(f"Connected to {c_host}")
+        default_read_size = 1024
+        request = await reader.read(default_read_size)
+        await self.handle_request(request, writer)
         writer.close()
         await writer.wait_closed()
 
@@ -139,18 +131,24 @@ class RedKingBot:
             print_error("No writer received")
             return
         if not request:
-            print_error("No request received")
+            # print_error("No request received")
             return
-
+        print_info(f"Received request: {request}")
         # check if the request is signed
         if not self.is_master:
             signed_request = self.check_if_signed_request(request)
             if not signed_request:
                 print_error("Invalid signed request")
                 return
-            print_error("Unhandled signed request received")
+            if signed_request[:2] == "pk":
+                # print_todo(f"TODO: Implement pushkey from master")
+                command_parts = signed_request.split(" ")
+                await self.handle_command(command_parts, writer)
+                return
+            print_error(f"Unhandled signed request received: {signed_request}")
             return
         elif self.is_master:
+            request = request.decode("utf-8")
             command_parts = request.split(" ")
             if not command_parts:
                 print_error("No command parts")
@@ -164,7 +162,7 @@ class RedKingBot:
             print_error("Empty command")
         elif cmd == "pushkey":
             await self.pushkey_to_bot(cmd_parts)
-        elif cmd == "pullkey":
+        elif cmd == "pk":
             await self.pullkey_from_master(cmd_parts, writer)
         elif cmd == "vaddr":
             await self.get_vaddr(writer)
@@ -182,8 +180,11 @@ class RedKingBot:
             await self.handle_swap(cmd_parts, writer)
         else:
             print_error("Unrecognized command")
-        writer.close()
-        await writer.wait_closed()
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception as e:
+            print_error(f"Error closing writer: {e}")
 
     # swap <virtual address>
     # swaps our virtual address with the neighbor's virtual address
@@ -603,23 +604,22 @@ class RedKingBot:
         if self.is_master:
             print_error("Only bot can receive pullkey command")
             return
-        encoded_encrypted_key = cmd_parts[1]
-        print_info(f"Received key: {encoded_encrypted_key}")
+        encrypted_key = cmd_parts[1]
+        print_info(f"Received key: [{encrypted_key}]")
+        aes_key = encrypted_key.encode("utf-8")
         try:
-            encrypted_key = base64.b64decode(encoded_encrypted_key)
-            decrypted_key = rsa.decrypt(encrypted_key, self.priv)
-            self.key = decrypted_key
-            print_info(f"Decrypted key: {self.key}")
+            self.key = aes_key
             f = Fernet(self.key)
             encrypted_msg = f.encrypt(self.test_msg)
             print_info(f"Encrypted message: {encrypted_msg}")
             print_info("Sending encrypted message to client")
             writer.write(encrypted_msg)
-            await writer.drain()
-            writer.close()
-            await writer.wait_closed()
         except Exception as e:
-            print_error(f"Error decrypting key: {e}")
+            print_error(f"Error setting key: {e}")
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+        print_info("End of pullkey_from_master")
 
     # pushkey <host> <port>
     # sends the encrypted key to the bot
@@ -639,32 +639,62 @@ class RedKingBot:
         except Exception as e:
             print_error(f"Error connecting to bot: {e}")
             return
-        # send the encrypted key to the bot
-        msg = f"pullkey {self.crypto}"
-        writer.write(msg.encode("utf8"))
-        await writer.drain()
-        default_read_size = 1024
-        response = await reader.read(default_read_size)
-        writer.close()
-        await writer.wait_closed()
-        # print_info(f"Response: {response}")
-        # decoded_response = response.decode("utf8")
-        # response = await self.receive_msg(reader)
-        f = Fernet(self.key)
-        decrypted_response = None
-        try:
-            decrypted_response = f.decrypt(response)
-        except Exception as e:
-            print_error(f"Error decrypting response: {e}")
+        if not reader or not writer:
+            print_error("No reader or writer")
             return
-        print_info(f"Decrypted response: {decrypted_response}")
-        if decrypted_response == self.test_msg:
-            print_success("Message acknowledged!")
-            # lets start by saving the host and port
-            self.add_neighbor(host, port)
+        # send the key to the bot
+        # we will sign this message
+        assert self.key
+        decoded_key = self.key.decode("utf-8")
+        msg = f"pk {decoded_key}"
+        print_info(f"Message before base64 encoding: {msg}")
+        msg = msg.encode("utf-8")
+        # base64 encode the message
+        # msg = base64.b64encode(msg.encode("utf-8")).decode("utf-8")
+        # msg = f"pullkey {self.crypto}"
+        # we can actually sign this message as well
+        if self.pub:
+            signed_msg = rsa.encrypt(msg, self.pub)
+            # base64_signed_msg = base64.b64encode(signed_msg).decode("utf-8")
+            base64_signed_msg = base64.b64encode(signed_msg)
+            print_info(f"Sending signed message: {base64_signed_msg}")
+            writer.write(base64_signed_msg)
+            await writer.drain()
+            default_read_size = 1024
+            response = await reader.read(default_read_size)
+            print_info(f"Response: {response}")
+            # decoded_response = response.decode("utf8")
+            try:
+                f = Fernet(self.key)
+                decrypted_response = f.decrypt(response)
+                print_info(f"Decrypted response: {decrypted_response}")
+                if decrypted_response == self.test_msg:
+                    print_success("Message acknowledged!")
+                else:
+                    print_error("Message rejected")
+            except Exception as e:
+                print_error(f"Error decrypting response: {e}")
+                return
+            try:
+                await writer.drain()
+            except Exception as e:
+                print_error(f"Error draining writer: {e}")
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception as e:
+                print_error(f"Error closing writer: {e}")
+            print_info("End of pushkey_to_bot")
         else:
-            print_error("Message rejected")
-        print_info("End of pushkey_to_bot")
+            print_error("No public key found")
+        # this is a check to make sure the bot is initialized with the proper seed
+        # we can disable this for now
+        # decrypted_response = None
+        #    # lets start by saving the host and port
+        #    self.add_neighbor(host, port)
+        # else:
+        #    print_error("Message rejected")
+        # print_info("End of pushkey_to_bot")
 
     def add_neighbor(self, host, port):
         hostport = f"{host}:{port}"
@@ -689,6 +719,6 @@ class RedKingBotMaster(RedKingBot):
             print_info("Initializing AES key")
             self.key = Fernet.generate_key()
             self.pub = rsa.PublicKey.load_pkcs1(self.pubkey)
-            self.crypto = rsa.encrypt(self.key, self.pub)
-            self.crypto = base64.b64encode(self.crypto).decode("utf-8")
+            # self.crypto = rsa.encrypt(self.key, self.pub)
+            # self.crypto = base64.b64encode(self.crypto).decode("utf-8")
             print_info(f"Initialized AES key: {self.key}")
