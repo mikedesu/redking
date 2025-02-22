@@ -107,9 +107,9 @@ class RedKingBot:
         if not request:
             print_error("No request received")
             return
-        if request == "init":
-            print_info(f"{self.crypto}")
-            return
+        # if request == "init":
+        #    print_info(f"{self.crypto}")
+        #    return
         command_parts = request.split(" ")
         if not command_parts:
             print_error("No command parts")

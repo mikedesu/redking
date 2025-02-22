@@ -12,7 +12,7 @@ echo "command" | nc localhost <port>
 ```
 
 See `test1_setup.sh`, `test1.sh`, etc. for examples of interaction at the moment.
-The intent is to automate a lot of what is being done there right now.
+The intent is to automate a lot of what is being done there right now
 
 -----
 
@@ -36,6 +36,14 @@ In a 4th terminal session:
 ./test1_setup.sh
 ./test1.sh
 ```
+
+-----
+
+## Recommendation
+
+Replace the public and private keys in the source code with your own.
+The intent is to eventually compress this down a bit for transferability.
+This way we can distribute keys as code, and perhaps instantiate new bots using them.
 
 -----
 
