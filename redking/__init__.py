@@ -1,4 +1,5 @@
 import random
+import math
 import asyncio
 from cryptography.fernet import Fernet
 import rsa
@@ -71,23 +72,48 @@ class RedKingBot:
                 await self.server.serve_forever()
             except Exception as e:
                 print_error(f"Error running server: {e}")
-            # await self.server.start_serving() # does this return a coroutine?
         self.server.close()
         await self.server.wait_closed()
 
     async def handle_client(self, reader, writer):
-        # request = None
-        # bad_requests = 0
-        # exit_commands = ["quit", "exit"]
         # c_extra_info = writer.get_extra_info("peername")
         # c_host = c_extra_info[0]
-        # while request not in exit_commands:
         # print_info(f"Connected to {c_host}")
         default_read_size = 1024
         request = await reader.read(default_read_size)
         await self.handle_request(request, writer)
         writer.close()
         await writer.wait_closed()
+
+    def check_if_encrypted_request(self, request):
+        if not request:
+            print_error("No request received")
+            return None
+        if len(request) == 0:
+            print_error("Empty request")
+            return None
+        # at this point, we can assume the request is not empty
+        # so we can attempt to decode it the same way the test message gets decoded
+        decrypted_request = None
+        try:
+            assert self.key
+            f = Fernet(self.key)
+            decrypted_request = f.decrypt(request)
+        except Exception as e:
+            print_error(f"Error decrypting request: {e}")
+            return None
+        if not decrypted_request:
+            print_error("No decrypted request")
+            return None
+        try:
+            decrypted_request = decrypted_request.decode("utf-8")
+        except Exception as e:
+            print_error(f"Error decoding decrypted request: {e}")
+            return None
+        if not decrypted_request:
+            print_error("No decoded request")
+            return None
+        return decrypted_request
 
     def check_if_signed_request(self, request):
         if not request:
@@ -314,6 +340,14 @@ class RedKingBot:
         b = neighbor["virtual_address"]
         # print_info(f"Checking swap between {a} and {b}")
         # print_info(f"d1: {d1:>10.10f} d2: {d2:>10.10f}")
+        # this should be a more efficient calculation than the previous code
+        # but it has yet to be tested...
+        # a_ns = [float(self.neighbors[n]["virtual_address"]) for n in self.neighbors]
+        # b_ns = [float(their_neighbors[n]["virtual_address"]) for n in their_neighbors]
+        # a_ns.remove(a)
+        # b_ns.remove(b)
+        # d1 = math.prod([abs(a - va) * abs(b - va) for va in a_ns])
+        # d2 = math.prod([abs(b - va) * abs(a - va) for va in b_ns])
         for n in self.neighbors:
             va = float(self.neighbors[n]["virtual_address"])
             if a == va:
@@ -389,6 +423,7 @@ class RedKingBot:
             _, writer = await asyncio.open_connection(host, port)
             # send the swap command
             msg = f"swap {va}"
+            # we are going to want to encrypt this message
             writer.write(msg.encode("utf8"))
             await writer.drain()
             writer.close()
