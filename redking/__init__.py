@@ -139,24 +139,14 @@ class RedKingBot:
             await self.check_for_swap(writer)
         elif cmd == "swap":
             await self.handle_swap(cmd_parts, writer)
-            # print_info("Received swap command")
-            # if len(cmd_parts) < 2:
-            #    print_error("swap command requires virtual address")
-            #    return
-            # va = float(cmd_parts[1])
-            # self.perform_swap_by_va(va)
-            # writer.write("Virtual address saved\n".encode("utf-8"))
-            # await writer.drain()
-            # writer.close()
-            # await writer.wait_closed()
         else:
             print_error("Unrecognized command")
-        # print_info("End of handle_command")
         writer.close()
         await writer.wait_closed()
 
+    # swap <virtual address>
+    # swaps our virtual address with the neighbor's virtual address
     async def handle_swap(self, cmd_parts, writer):
-        # print_info("Received swap command")
         if len(cmd_parts) < 2:
             print_error("swap command requires virtual address")
             return
@@ -220,9 +210,7 @@ class RedKingBot:
         print_info(
             f"Virtual address is now {self.virtual_address:.8f}. Total swaps: {self.total_swaps}"
         )
-
         # rich.print(self.tree)
-
         self.neighbors[hostport] = neighbor
         # we also need to update our own entry in our local map of the neighbor's own neighbor's list
         their_neighbors = self.neighbor_neighbors.get(hostport)
@@ -243,20 +231,20 @@ class RedKingBot:
                     their_neighbors[n] = neighbor_info
             # at the very end, we update our local map of the neighbor's own neighbor's list
             self.neighbor_neighbors[hostport] = their_neighbors
-
+            # nice printing
             tree = Tree(str(self.virtual_address))
             for n in self.neighbors:
                 neighbor_info = self.neighbors[n]
                 va = neighbor_info["virtual_address"]
                 tree.add(str(va))
-
             rich.print(tree)
-
             return True
         else:
             print_error(f"No their_neighbors found for {hostport}")
         return False
 
+    # check_for_swap
+    # checks to see if we should swap with a neighbor and if so, do so
     async def check_for_swap(self, writer):
         # this assumes you have all the neighbors
         # and their neighbors
@@ -367,7 +355,9 @@ class RedKingBot:
             print_error(f"Error connecting to bot: {e}")
             return
 
+    # get_list_neighbors <host> <port>
     # this function actually attempts to open a new connection to the given host and port
+    # and return their list of neighbors
     async def get_list_neighbors(self, cmd_parts, writer):
         print_info(f"Received get_list_neighbors request")
         if len(cmd_parts) < 3:
@@ -461,6 +451,8 @@ class RedKingBot:
             print_error(f"Exception in get_list_neighbors: {e}")
             return
 
+    # list_neighbors
+    # returns a list of neighbors
     async def list_neighbors(self, writer):
         print_info(f"Received list_neighbors request")
         # print_info(f"Neighbors: {self.neighbors}")
@@ -475,6 +467,8 @@ class RedKingBot:
         writer.close()
         await writer.wait_closed()
 
+    # add_neighbor <host> <port>
+    # adds a neighbor to the list of neighbors
     async def handle_add_neighbor(self, cmd_parts, writer):
         if len(cmd_parts) < 3:
             print_error("add_neighbor command requires host and port")
@@ -488,6 +482,8 @@ class RedKingBot:
         writer.close()
         await writer.wait_closed()
 
+    # vaddr
+    # returns the virtual address
     async def get_vaddr(self, writer):
         print_info(f"Received vaddr request")
         print_info(f"My virtual address: {self.virtual_address}")
@@ -502,6 +498,8 @@ class RedKingBot:
         writer.close()
         await writer.wait_closed()
 
+    # get_vaddr <host> <port>
+    # gets the virtual address from the given host and port
     async def get_vaddr_from(self, cmd_parts, writer):
         print_info(f"get_vaddr_from")
         if len(cmd_parts) < 3:
@@ -558,6 +556,8 @@ class RedKingBot:
         # print_info(f"Sending virtual address to {host}")
         # await self.send_msg(writer, va)
 
+    # pullkey <encrypted_key>
+    # receives the encrypted key from the master
     async def pullkey_from_master(self, cmd_parts, writer):
         if self.is_master:
             print_error("Only bot can receive pullkey command")
@@ -580,6 +580,8 @@ class RedKingBot:
         except Exception as e:
             print_error(f"Error decrypting key: {e}")
 
+    # pushkey <host> <port>
+    # sends the encrypted key to the bot
     async def pushkey_to_bot(self, cmd_parts):
         if not self.is_master:
             print_error("Only master can receive pushkey command")
@@ -604,7 +606,7 @@ class RedKingBot:
         response = await reader.read(default_read_size)
         writer.close()
         await writer.wait_closed()
-        print_info(f"Response: {response}")
+        # print_info(f"Response: {response}")
         # decoded_response = response.decode("utf8")
         # response = await self.receive_msg(reader)
         f = Fernet(self.key)
