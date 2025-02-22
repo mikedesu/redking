@@ -52,10 +52,12 @@ class RedKingBot:
         self.neighbor_neighbors = {}
         self.seed = seed
         random.seed(self.seed)
-        self.test_msg = generate_random_str().encode("utf-8")
+        # self.test_msg = generate_random_str().encode("utf-8")
+        self.test_msg = generate_random_str()
         self.server_coroutine = None
         self.total_swaps = 0
         print_info(f"Initialized with virtual address {self.virtual_address}")
+        print_info(f"Initialized with test message: {self.test_msg}")
         self.tree = Tree(str(self.virtual_address))
 
     def is_initialized(self):
@@ -102,17 +104,17 @@ class RedKingBot:
         except Exception as e:
             print_error(f"Error decrypting request: {e}")
             return None
-        if not decrypted_request:
-            print_error("No decrypted request")
-            return None
+        # if not decrypted_request:
+        #    print_error("No decrypted request")
+        #    return None
         try:
             decrypted_request = decrypted_request.decode("utf-8")
         except Exception as e:
             print_error(f"Error decoding decrypted request: {e}")
             return None
-        if not decrypted_request:
-            print_error("No decoded request")
-            return None
+        # if not decrypted_request:
+        #    print_error("No decoded request")
+        #    return None
         return decrypted_request
 
     def check_if_signed_request(self, request):
@@ -130,26 +132,26 @@ class RedKingBot:
         except Exception as e:
             print_error(f"Error decoding request: {e}")
             return None
-        if not encrypted_request:
-            print_error("No encrypted request")
-            return None
+        # if not encrypted_request:
+        #    print_error("No encrypted request")
+        #    return None
         decrypted_request = None
         try:
             decrypted_request = rsa.decrypt(encrypted_request, self.priv)
         except Exception as e:
             print_error(f"Error decrypting request: {e}")
             return None
-        if not decrypted_request:
-            print_error("No decrypted request")
-            return None
+        # if not decrypted_request:
+        #    print_error("No decrypted request")
+        #    return None
         try:
             decrypted_request = decrypted_request.decode("utf-8")
         except Exception as e:
             print_error(f"Error decoding decrypted request: {e}")
             return None
-        if not decrypted_request:
-            print_error("No decoded request")
-            return None
+        # if not decrypted_request:
+        #    print_error("No decoded request")
+        #    return None
         return decrypted_request
 
     async def handle_request(self, request, writer):
@@ -645,7 +647,8 @@ class RedKingBot:
         try:
             self.key = aes_key
             f = Fernet(self.key)
-            encrypted_msg = f.encrypt(self.test_msg)
+            test_msg_bytes = self.test_msg.encode("utf-8")
+            encrypted_msg = f.encrypt(test_msg_bytes)
             print_info(f"Encrypted message: {encrypted_msg}")
             print_info("Sending encrypted message to client")
             writer.write(encrypted_msg)
@@ -703,6 +706,7 @@ class RedKingBot:
                 f = Fernet(self.key)
                 decrypted_response = f.decrypt(response)
                 print_info(f"Decrypted response: {decrypted_response}")
+                decrypted_response = decrypted_response.decode("utf-8")
                 if decrypted_response == self.test_msg:
                     print_success("Message acknowledged!")
                 else:
