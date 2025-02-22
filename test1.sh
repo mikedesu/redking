@@ -15,13 +15,13 @@
 
 #ct=0;
 while true; do
-    echo "check_for_swap" | nc localhost 6666;
-    sleep 0.5;
-    echo "check_for_swap" | nc localhost 6667;
-    sleep 0.5;
-    echo "check_for_swap" | nc localhost 6668;
+    echo "check_for_swap" | nc localhost 6661;
+    sleep 1;
+    echo "check_for_swap" | nc localhost 6662;
+    sleep 1;
+    echo "check_for_swap" | nc localhost 6663;
     #ct=$((ct+1));
-    sleep 0.5;
+    sleep 1;
 done
 
 
