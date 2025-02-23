@@ -7,6 +7,7 @@ import base64
 import rich
 from rich.tree import Tree
 from datetime import datetime
+import json
 
 
 def print_info(msg):
@@ -554,12 +555,12 @@ class RedKingBot:
             return
         host = cmd_parts[1]
         port = int(cmd_parts[2])
-        self.add_neighbor(host, port)
+        self.add_neighbor(host, port, writer)
         # writer.write("Neighbor added\n".encode("utf-8"))
-        writer.write("OK\n".encode("utf-8"))
-        await writer.drain()
-        writer.close()
-        await writer.wait_closed()
+        # writer.write("OK\n".encode("utf-8"))
+        # await writer.drain()
+        # writer.close()
+        # await writer.wait_closed()
 
     # vaddr
     # returns the virtual address
@@ -735,14 +736,26 @@ class RedKingBot:
         #    print_error("Message rejected")
         # print_info("End of pushkey_to_bot")
 
-    def add_neighbor(self, host, port):
+    def add_neighbor(self, host, port, writer):
+        # make sure that we do not add ourself
+        if host == "localhost" and port == self.port:
+            print_error("Cannot add self as neighbor")
+            return
         hostport = f"{host}:{port}"
         neighbor = self.neighbors.get(hostport)
         if neighbor:
             print_info(f"Neighbor already exists: {neighbor}")
+            error_json = json.dumps(
+                {"result": "ERROR", "message": "Neighbor already exists"}
+            ).encode("utf-8")
+            writer.write(error_json)
             return
         self.neighbors[hostport] = {"host": host, "port": port, "virtual_address": None}
         print_info(f"Neighbor added: {self.neighbors[hostport]}")
+        success_json = json.dumps(
+            {"result": "SUCCESS", "message": "Neighbor added"}
+        ).encode("utf-8")
+        writer.write(success_json)
 
 
 class RedKingBotMaster(RedKingBot):
