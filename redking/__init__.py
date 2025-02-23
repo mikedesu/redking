@@ -185,10 +185,16 @@ class RedKingBot:
             await self.handle_command(command_parts, writer)
 
     async def handle_command(self, cmd_parts, writer):
-        cmd = cmd_parts[0]
+        cmd = cmd_parts[0].strip()
         # first of all, only the master can receive 'raw' commands
+        print_info(f"Received command: {cmd}")
         if len(cmd) == 0:
             print_error("Empty command")
+        elif cmd == "send_rsa_ping":
+            await self.send_rsa_ping(cmd_parts, writer)
+        elif cmd == "ping":
+            writer.write("pong".encode("utf-8"))
+            await writer.drain()
         elif cmd == "pushkey":
             await self.pushkey_to_bot(cmd_parts)
         elif cmd == "pk":
@@ -214,6 +220,30 @@ class RedKingBot:
             await writer.wait_closed()
         except Exception as e:
             print_error(f"Error closing writer: {e}")
+
+    # send_ping <host> <port>
+    # sends an RSA-signed ping to the given host and port and waits for a response
+    async def send_rsa_ping(self, cmd_parts, writer):
+        if len(cmd_parts) < 3:
+            print_error("send_ping command requires host and port")
+            return
+        host = cmd_parts[1]
+        port = cmd_parts[2]
+        reader = None
+        writer2 = None
+        try:
+            port = int(port)
+            reader, writer2 = await asyncio.open_connection(host, port)
+            writer2.write("ping".encode("utf-8"))
+            await writer2.drain()
+            response = await reader.read(1024)
+            print_info(f"Received: {response}")
+            writer.write(response)
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+        except Exception as e:
+            print_error(f"Error connecting to bot: {e}")
 
     # swap <virtual address>
     # swaps our virtual address with the neighbor's virtual address
