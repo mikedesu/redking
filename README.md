@@ -69,6 +69,7 @@ swap
 
 ## TODO
 
+- [ ] On adding neighbors, need to verify the neighbor is up and running
 - [ ] Only the botmaster should receive raw commands and even then...
   - [ ] Commands sent between botmaster and bot should be optionally encrypted
   - [ ] Commands and info sent between bot and bot should be encrypted
