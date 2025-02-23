@@ -165,18 +165,45 @@ class RedKingBot:
         print_info(f"Received request: {request}")
         # check if the request is signed
         if not self.is_master:
-            signed_request = self.check_if_signed_request(request)
-            if not signed_request:
-                print_error("Invalid signed request")
+            # check to see if we are initialized
+            if not self.is_initialized():
+                print_info("Bot is not initialized")
+                # check for signed request anyway in case it is a pushkey from the master
+                signed_request = self.check_if_signed_request(request)
+                if signed_request and signed_request[:2] == "pk":
+                    command_parts = signed_request.split(" ")
+                    await self.handle_command(command_parts, writer)
+                    return
+                # receive the raw request
+                request = request.decode("utf-8")
+                command_parts = request.split(" ")
+                await self.handle_command(command_parts, writer)
                 return
-            if signed_request[:2] == "pk":
+            signed_request = self.check_if_signed_request(request)
+            decrypted_request = self.check_if_encrypted_request(request)
+            if not signed_request and not decrypted_request:
+                print_error("Invalid request: isn't RSA signed or AES encrypted")
+                return
+            if signed_request and signed_request[:2] == "pk":
                 # print_todo(f"TODO: Implement pushkey from master")
                 command_parts = signed_request.split(" ")
+                await self.handle_command(command_parts, writer)
+                return
+            if decrypted_request:
+                print_info(f"Decrypted request: {decrypted_request}")
+                command_parts = decrypted_request.split(" ")
                 await self.handle_command(command_parts, writer)
                 return
             print_error(f"Unhandled signed request received: {signed_request}")
             return
         elif self.is_master:
+            # check for decrypted request
+            decrypted_request = self.check_if_encrypted_request(request)
+            if decrypted_request:
+                print_info(f"Decrypted request: {decrypted_request}")
+                command_parts = decrypted_request.split(" ")
+                await self.handle_command(command_parts, writer)
+                return
             request = request.decode("utf-8")
             command_parts = request.split(" ")
             if not command_parts:
@@ -190,11 +217,14 @@ class RedKingBot:
         print_info(f"Received command: {cmd}")
         if len(cmd) == 0:
             print_error("Empty command")
-        elif cmd == "send_rsa_ping":
-            await self.send_rsa_ping(cmd_parts, writer)
+        elif cmd == "send_raw_ping":
+            await self.send_raw_ping(cmd_parts, writer)
+        elif cmd == "send_aes_ping":
+            await self.send_aes_ping(cmd_parts, writer)
         elif cmd == "ping":
-            writer.write("pong".encode("utf-8"))
-            await writer.drain()
+            await self.send_aes_pong(writer)
+        elif cmd == "pong":
+            await self.send_aes_pong(writer)
         elif cmd == "pushkey":
             await self.pushkey_to_bot(cmd_parts)
         elif cmd == "pk":
@@ -221,9 +251,67 @@ class RedKingBot:
         except Exception as e:
             print_error(f"Error closing writer: {e}")
 
-    # send_ping <host> <port>
-    # sends an RSA-signed ping to the given host and port and waits for a response
-    async def send_rsa_ping(self, cmd_parts, writer):
+    async def send_raw_pong(self, writer):
+        print_info("Sending raw pong")
+        writer.write("pong\n".encode("utf-8"))
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    async def send_aes_pong(self, writer):
+        print_info("Sending AES-encrypted pong")
+        if not self.is_initialized():
+            print_error("Bot is not initialized...sending raw pong")
+            await self.send_raw_pong(writer)
+            return
+        assert self.key
+        f = Fernet(self.key)
+        msg = "pong".encode("utf-8")
+        encrypted_msg = f.encrypt(msg)
+        writer.write(encrypted_msg)
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    # send_aes_ping <host> <port>
+    # sends an AES-encrypted ping to the given host and port and waits for a response
+    # only works if the bot is initialized with an AES key
+    async def send_aes_ping(self, cmd_parts, writer):
+        if not self.is_initialized():
+            print_error("Bot is not initialized")
+            return
+        if len(cmd_parts) < 3:
+            print_error("send_ping command requires host and port")
+            return
+        host = cmd_parts[1]
+        port = cmd_parts[2]
+        reader = None
+        writer2 = None
+        try:
+            port = int(port)
+            reader, writer2 = await asyncio.open_connection(host, port)
+            assert self.key
+            f = Fernet(self.key)
+            msg = "ping".encode("utf-8")
+            encrypted_msg = f.encrypt(msg)
+            writer2.write(encrypted_msg)
+            await writer2.drain()
+            response = await reader.read(1024)
+            print_info(f"Received: {response}")
+            # decrypt the response
+            decrypted_response = f.decrypt(response)
+            print_info(f"Decrypted response: {decrypted_response}")
+            writer.write(decrypted_response)
+            await writer.drain()
+            writer.close()
+            await writer.wait_closed()
+        except Exception as e:
+            print_error(f"Error connecting to bot: {e}")
+
+    # send_raw_ping <host> <port>
+    # sends a ping to the given host and port and waits for a response
+    # only works if the bot is not initialized with an AES key
+    async def send_raw_ping(self, cmd_parts, writer):
         if len(cmd_parts) < 3:
             print_error("send_ping command requires host and port")
             return
