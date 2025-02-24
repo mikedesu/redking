@@ -942,3 +942,24 @@ class RedKingBotMaster(RedKingBot):
             # self.crypto = rsa.encrypt(self.key, self.pub)
             # self.crypto = base64.b64encode(self.crypto).decode("utf-8")
             print_info(f"Initialized AES key: {self.key}")
+
+
+class EchoUDPProtocol(asyncio.DatagramProtocol):
+    def __init__(self):
+        self.transport = None
+
+    def connection_made(self, transport):
+        self.transport = transport
+
+    def datagram_received(self, data, addr):
+        message = data.decode()
+        print_info(f"Received {message} from {addr}")
+        print_info(f"Send {message} to {addr}")
+        assert self.transport
+        self.transport.sendto(data, addr)
+
+    def error_received(self, exc):
+        print_error(f"Error received: {exc}")
+
+    def connection_lost(self, exc):
+        print_info("Connection lost")
