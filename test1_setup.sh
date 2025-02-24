@@ -2,7 +2,10 @@
 #
 #   A-B
 
+# send add_neighbor command to botmaster to add localhost 6662
 echo "add_neighbor localhost 6662" | nc localhost 6661;
+
+#
 echo "add_neighbor localhost 6661" | nc localhost 6662;
 
 #####

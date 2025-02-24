@@ -1,5 +1,6 @@
 import random
-import math
+
+# import math
 import asyncio
 from cryptography.fernet import Fernet
 import rsa
@@ -105,17 +106,11 @@ class RedKingBot:
         except Exception as e:
             print_error(f"Error decrypting request: {e}")
             return None
-        # if not decrypted_request:
-        #    print_error("No decrypted request")
-        #    return None
         try:
             decrypted_request = decrypted_request.decode("utf-8")
         except Exception as e:
             print_error(f"Error decoding decrypted request: {e}")
             return None
-        # if not decrypted_request:
-        #    print_error("No decoded request")
-        #    return None
         return decrypted_request
 
     def check_if_signed_request(self, request):
@@ -133,26 +128,17 @@ class RedKingBot:
         except Exception as e:
             print_error(f"Error decoding request: {e}")
             return None
-        # if not encrypted_request:
-        #    print_error("No encrypted request")
-        #    return None
         decrypted_request = None
         try:
             decrypted_request = rsa.decrypt(encrypted_request, self.priv)
         except Exception as e:
             print_error(f"Error decrypting request: {e}")
             return None
-        # if not decrypted_request:
-        #    print_error("No decrypted request")
-        #    return None
         try:
             decrypted_request = decrypted_request.decode("utf-8")
         except Exception as e:
             print_error(f"Error decoding decrypted request: {e}")
             return None
-        # if not decrypted_request:
-        #    print_error("No decoded request")
-        #    return None
         return decrypted_request
 
     async def handle_request(self, request, writer):
@@ -235,6 +221,9 @@ class RedKingBot:
             await self.get_vaddr_from(cmd_parts, writer)
         elif cmd == "add_neighbor":
             await self.handle_add_neighbor(cmd_parts, writer)
+            await self.get_vaddr_from(cmd_parts, writer)
+        elif cmd == "send_add_neighbor":
+            await self.handle_send_add_neighbor(cmd_parts, writer)
         elif cmd == "list_neighbors":
             await self.list_neighbors(writer)
         elif cmd == "get_list_neighbors":
@@ -250,6 +239,37 @@ class RedKingBot:
             await writer.wait_closed()
         except Exception as e:
             print_error(f"Error closing writer: {e}")
+
+    async def handle_send_add_neighbor(self, cmd_parts, writer):
+        if len(cmd_parts) < 5:
+            print_error("send_add_neighbor command requires host and port")
+            return
+        send_host = cmd_parts[1]
+        send_port = int(cmd_parts[2])
+        add_host = cmd_parts[3]
+        add_port = int(cmd_parts[4])
+        # send the add_neighbor command to the bot
+        # we have to encrypt this message with the AES key
+        assert self.key
+        f = Fernet(self.key)
+        msg = f"add_neighbor {add_host} {add_port}"
+        encrypted_msg = f.encrypt(msg.encode("utf-8"))
+        # open a connection to the bot
+        reader = None
+        writer2 = None
+        try:
+            reader, writer2 = await asyncio.open_connection(send_host, send_port)
+            writer2.write(encrypted_msg)
+            await writer2.drain()
+            DEFAULT_READ_SIZE = 1024
+            response = await reader.read(DEFAULT_READ_SIZE)
+            print_info(f"Received: {response}")
+            writer.write(response)
+            # await writer.drain()
+            # writer.close()
+            # await writer.wait_closed()
+        except Exception as e:
+            print_error(f"Error connecting to bot: {e}")
 
     async def send_raw_pong(self, writer):
         print_info("Sending raw pong")
@@ -691,7 +711,13 @@ class RedKingBot:
         # base64
         b64_va = base64.b64encode(hex_va.encode("utf-8")).decode("utf-8")
         print_info(f"Base64 virtual address: {b64_va}")
-        writer.write(b64_va.encode("utf-8"))
+
+        # encrypt the virtual address
+        assert self.key
+        f = Fernet(self.key)
+        encrypted_b64_va = f.encrypt(b64_va.encode("utf-8"))
+        writer.write(encrypted_b64_va)
+        # writer.write(b64_va.encode("utf-8"))
         await writer.drain()
         writer.close()
         await writer.wait_closed()
@@ -713,15 +739,38 @@ class RedKingBot:
             # send the virtual address request to the neighbor
             # is reader2 being closed early?
             # await self.send_msg(writer2, "vaddr")
-            writer2.write("vaddr".encode("utf-8"))
+            # encrypt the 'vaddr' command
+            msg = "vaddr".encode("utf-8")
+            assert self.key
+            f = Fernet(self.key)
+            encrypted_msg = f.encrypt(msg)
+            writer2.write(encrypted_msg)
+            # writer2.write("vaddr".encode("utf-8"))
             await writer2.drain()
             # response = await self.receive_msg(reader2)
             response = await reader2.read(1024)
             print_info(f"Received: {response}")
+            # decrypt the response
+            try:
+                response = f.decrypt(response)
+                print_info(f"Decrypted response: {response}")
+            except Exception as e:
+                print_error(f"Error decrypting response: {e}")
+                await writer2.drain()
+                writer2.close()
+                await writer2.wait_closed()
+                return
+
+            response = response.decode("utf-8")
+            base64_va = response
+            print_info(f"Base64 virtual address: {base64_va}")
             # decode the base64 response
-            response = base64.b64decode(response).decode("utf-8")
+            decoded_response = base64.b64decode(response).decode("utf-8")
+            print_info(f"Decoded response: {decoded_response}")
             # convert the hex virtual address to float
-            va = float.fromhex(response)
+            # va = float.fromhex(response)
+            # va = float.fromhex(response)
+            va = float.fromhex(decoded_response)
             print_info(f"Received virtual address: {va}")
             # save the virtual address
             # check if the neighbor exists
@@ -735,7 +784,8 @@ class RedKingBot:
             print_info(f"Neighbor virtual address saved: {neighbor}")
             # await self.send_msg(writer, "Virtual address saved\n")
             # writer.write("Virtual address saved\n".encode("utf-8"))
-            writer.write("OK\n".encode("utf-8"))
+            writer.write(f"{va}\n".encode("utf-8"))
+            # writer.write("OK\n".encode("utf-8"))
             await writer.drain()
             writer.close()
             await writer.wait_closed()
