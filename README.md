@@ -22,19 +22,16 @@ The intent is to automate a lot of what is being done there right now
 
 ## Example quick start
 
-In 3 separate terminal sessions:
-
 ```
-python3 botmaster.py 6661 0
-python3 botmain.py 6662 0
-python3 botmain.py 6663 0
-```
+python3 master_udp_driver.py <port>
+python3 bot_udp_driver.py <port>
 
-In a 4th terminal session:
+# super-basic commandline interaction
+# grab the key from the botmaster
+KEY=$(echo $(./rsa_sign.py "getkey") | nc -u -q 1 localhost 6666 | ./rsa_unsign.py)
 
-```
-./test1_setup.sh
-./test1.sh
+# send AES encrypted pings to the botmaster and receive and decrypt pong
+while true; do echo $KEY | ./aes_encrypt.py "ping" | nc -u -q 1 localhost 6666 | ./aes_decrypt.py $KEY; sleep 1; done
 ```
 
 -----
@@ -98,6 +95,8 @@ swap
     - [ ] Verify nodes are properly managing their list of neighbors and neighbor-neighbors
 - [ ] Be able to distribute code and function updates/additions across the network
 - [ ] Remove dependencies on external `rich` library
+- [ ] Swap keys or regenerate and redistribute keys
+- [ ] Rotating public/private keys
 - [ ] Many other things that I can't think of right now
 
 -----

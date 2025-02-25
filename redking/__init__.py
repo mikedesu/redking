@@ -1014,11 +1014,33 @@ class RedkingUDP(asyncio.DatagramProtocol):
         # print_info(f"handle_function: {message} {addr}")
         split_msg = message.split(" ")
         cmd = split_msg[0]
+        retval = ""
         if cmd == "getname":
-            self.handle_getname(addr)
+            retval = self.handle_getname(addr)
         elif cmd == "setname":
             name = split_msg[1]
-            self.handle_setname(name, addr)
+            retval = self.handle_setname(name, addr)
+        elif cmd == "getkey":
+            retval = self.handle_getkey(addr)
+        elif cmd == "ping":
+            retval = self.handle_ping(addr)
+        return retval
+        # if self.transport:
+        #    self.transport.sendto(return_msg.encode("utf-8"), addr)
+
+    def handle_ping(self, addr):
+        return_msg = "pong"
+        return return_msg
+
+    def handle_getkey(self, addr):
+        return_msg = ""
+        if not self.key:
+            return_msg = "No key set"
+        else:
+            return_msg = self.key.decode("utf-8")
+        return return_msg
+        # if self.transport:
+        #    self.transport.sendto(return_msg.encode("utf-8"), addr)
 
     def handle_setname(self, name, addr):
         return_msg = ""
@@ -1045,13 +1067,40 @@ class RedkingUDP(asyncio.DatagramProtocol):
     def handle_encrypted_message(self, message, addr):
         message = message.strip()
         print_info(f"Received encrypted message from {addr}: {message}")
-        self.handle_function(message, addr)
+        retval = self.handle_function(message, addr)
+        # print_info(f"Return value: {retval}")
+        # encrypt the return message
+        encrypted_retval = None
+        if not self.key:
+            print_error("Cannot encrypt, no AES key set")
+            return
+        try:
+            f = Fernet(self.key)
+            assert retval
+            encrypted_retval = f.encrypt(retval.encode("utf-8"))
+        except Exception as e:
+            print_error(f"Error encrypting return message: {e}")
+            return
+        if self.transport:
+            self.transport.sendto(encrypted_retval, addr)
+        return
 
     def handle_signed_message(self, message, addr):
         message = message.strip()
         print_info(f"Received signed message from {addr}: {message}")
-        self.handle_function(message, addr)
-        # return
+        retval = self.handle_function(message, addr)
+        # sign the return message
+        # check to make sure it is less than 53 bytes
+        if len(retval) > 53:
+            print_error("Return message too long")
+            return
+        signed_retval = rsa.encrypt(retval.encode("utf-8"), self.priv)
+        # print_info(f"signed_retval: {signed_retval}")
+        base64_signed_retval = base64.b64encode(signed_retval)
+        # print_info(f"base64_signed_retval: {base64_signed_retval}")
+        if self.transport:
+            self.transport.sendto(base64_signed_retval, addr)
+        return
 
     def handle_plaintext(self, data, addr):
         if not self.is_master:

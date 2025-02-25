@@ -1,7 +1,7 @@
+#!/usr/bin/env python3
 import rsa
 import sys
 import base64
-import gzip
 
 
 def main():
