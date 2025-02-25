@@ -958,7 +958,7 @@ class RedKingBot:
 class RedkingUDP(asyncio.DatagramProtocol):
     def __init__(self):
         self.start_time = time.time()
-        print_info(f"Initializing Redking UDP server: {self.start_time}")
+        print_info(f"Initializing Redking UDP server")
         self.transport = None
         self.is_master = False
         self.key = None
@@ -978,6 +978,8 @@ class RedkingUDP(asyncio.DatagramProtocol):
         # self.server_coroutine = None
         self.total_swaps = 0
         print_info(f"Initialized with virtual address {self.virtual_address}")
+        self.name = None
+        self.name_locked = False
         # print_info(f"Initialized with test message: {self.test_msg}")
         # self.tree = Tree(str(self.virtual_address))
 
@@ -985,20 +987,76 @@ class RedkingUDP(asyncio.DatagramProtocol):
         self.transport = transport
 
     def datagram_received(self, data, addr):
+        # message = data
         message = data.decode().strip()
-        decrypted_message = self.check_if_encrypted_request(data)
-        if decrypted_message:
-            print_info(f"Decrypted message: {decrypted_message}")
-            return
+        # start_time = time.time()
         signed_message = self.check_if_signed_request(data)
         if signed_message:
-            print_info(f"Signed message: {signed_message}")
-        #    return
-        # print_info(f"Treating as plaintext")
-        # print_info(f"Received: {message}")
-        # else it is plaintext
-        # assert self.transport
-        # self.transport.sendto(data, addr)
+            # print_info(f"Received RSA-signed message from {addr}: {signed_message}")
+            self.handle_signed_message(signed_message, addr)
+        else:
+            decrypted_message = self.check_if_encrypted_request(data)
+            if decrypted_message:
+                # print_info(f"Decrypted message: {decrypted_message}")
+                self.handle_encrypted_message(decrypted_message, addr)
+            else:
+                # print_info(f"Treating as plaintext")
+                # print_info(f"Received message from {addr}: {message}")
+                # else it is plaintext
+                self.handle_plaintext(data, addr)
+                # if self.transport:
+                #    self.transport.sendto(data, addr)
+        # end_time = time.time()
+        # elapsed_time = end_time - start_time
+        # print_info(f"Elapsed time: {elapsed_time}")
+
+    def handle_function(self, message, addr):
+        # print_info(f"handle_function: {message} {addr}")
+        split_msg = message.split(" ")
+        cmd = split_msg[0]
+        if cmd == "getname":
+            self.handle_getname(addr)
+        elif cmd == "setname":
+            name = split_msg[1]
+            self.handle_setname(name, addr)
+
+    def handle_setname(self, name, addr):
+        return_msg = ""
+        if self.name_locked:
+            return_msg = "Name locked, cannot change"
+        elif not name:
+            return_msg = "No name received"
+        elif len(name) == 0:
+            return_msg = "Empty name"
+        else:
+            self.name = name
+            return_msg = f"Set name to {name}"
+        if self.transport:
+            self.transport.sendto(return_msg.encode("utf-8"), addr)
+
+    def handle_getname(self, addr):
+        name = self.name
+        if name is None:
+            name = "None"
+        name = name.encode("utf-8")
+        assert self.transport
+        self.transport.sendto(name, addr)
+
+    def handle_encrypted_message(self, message, addr):
+        message = message.strip()
+        print_info(f"Received encrypted message from {addr}: {message}")
+        self.handle_function(message, addr)
+
+    def handle_signed_message(self, message, addr):
+        message = message.strip()
+        print_info(f"Received signed message from {addr}: {message}")
+        self.handle_function(message, addr)
+        # return
+
+    def handle_plaintext(self, data, addr):
+        if not self.is_master:
+            print_error("Only master can handle plaintext")
+            return
 
     def error_received(self, exc):
         print_error(f"Error received: {exc}")
@@ -1007,7 +1065,7 @@ class RedkingUDP(asyncio.DatagramProtocol):
         print_info("Connection lost")
 
     def check_if_encrypted_request(self, request):
-        print_info(f"Checking if encrypted request...")
+        # print_info(f"Checking if encrypted request...")
         if not request:
             print_error("No request received")
             return None
@@ -1025,17 +1083,17 @@ class RedkingUDP(asyncio.DatagramProtocol):
             f = Fernet(self.key)
             decrypted_request = f.decrypt(request)
         except Exception as e:
-            print_error(f"Error decrypting request: {e}")
+            # print_error(f"Error decrypting request: {e}")
             return None
         try:
             decrypted_request = decrypted_request.decode("utf-8")
         except Exception as e:
-            print_error(f"Error decoding decrypted request: {e}")
+            # print_error(f"Error decoding decrypted request: {e}")
             return None
         return decrypted_request
 
     def check_if_signed_request(self, request):
-        print_info(f"Checking if signed request...")
+        # print_info(f"Checking if signed request...")
         if not request:
             print_error("No request received")
             return None
@@ -1048,18 +1106,18 @@ class RedkingUDP(asyncio.DatagramProtocol):
         try:
             encrypted_request = base64.b64decode(request)
         except Exception as e:
-            print_error(f"Error decoding request: {e}")
+            # print_error(f"Error decoding request: {e}")
             return None
         decrypted_request = None
         try:
             decrypted_request = rsa.decrypt(encrypted_request, self.priv)
         except Exception as e:
-            print_error(f"Error decrypting request: {e}")
+            # print_error(f"Error decrypting request: {e}")
             return None
         try:
             decrypted_request = decrypted_request.decode("utf-8")
         except Exception as e:
-            print_error(f"Error decoding decrypted request: {e}")
+            # print_error(f"Error decoding decrypted request: {e}")
             return None
         return decrypted_request
 
@@ -1076,30 +1134,10 @@ class RedkingMasterUDP(RedkingUDP):
     def connection_made(self, transport):
         self.transport = transport
 
-    # def datagram_received(self, data, addr):
-    #    message = data.decode()
-    #    print_info(f"Received {message} from {addr}")
-    #    print_info(f"Send {message} to {addr}")
-    #    assert self.transport
-    #    self.transport.sendto(data, addr)
-
-    def datagram_received(self, data, addr):
-        # message = data
-        message = data.decode().strip()
-        print_info(f"Received datagram: {data}")
-        signed_message = self.check_if_signed_request(data)
-        if signed_message:
-            print_info(f"Signed message: {signed_message}")
-            return
-        decrypted_message = self.check_if_encrypted_request(data)
-        if decrypted_message:
-            print_info(f"Decrypted message: {decrypted_message}")
-            return
-        print_info(f"Treating as plaintext")
-        print_info(f"Received: {message}")
-        # else it is plaintext
-        if self.transport:
-            self.transport.sendto(data, addr)
+    def handle_plaintext(self, data, addr):
+        if self.is_master:
+            message = data.decode().strip()
+            print_info(f"Received plaintext from {addr}: {message}")
 
     def error_received(self, exc):
         print_error(f"Error received: {exc}")
@@ -1109,9 +1147,8 @@ class RedkingMasterUDP(RedkingUDP):
 
     def init_aes_key(self):
         if not self.key:
-            print_info("Initializing AES key")
+            # print_info("Initializing AES key")
             self.key = Fernet.generate_key()
             self.pub = rsa.PublicKey.load_pkcs1(self.pubkey)
-            # self.crypto = rsa.encrypt(self.key, self.pub)
-            # self.crypto = base64.b64encode(self.crypto).decode("utf-8")
-            print_info(f"Initialized AES key: {self.key}")
+            # print_info(f"Initialized AES key: {self.key}")
+            print_info(f"Initialized AES key")
