@@ -1,4 +1,5 @@
 import random
+import time
 
 # import math
 import asyncio
@@ -12,23 +13,33 @@ import json
 
 
 def print_info(msg):
-    curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    rich.print(f":pizza: {curtime} {msg}")
+    # curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":pizza: {msg}")
+    # rich.print(f":pizza: {curtime} {msg}")
 
 
 def print_success(msg):
-    curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    rich.print(f":thumbs_up: {curtime} {msg}")
+    # curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":thumbs_up: {msg}")
+    # rich.print(f":thumbs_up: {curtime} {msg}")
 
 
 def print_error(msg):
-    curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    rich.print(f":pile_of_poo: {curtime} {msg}")
+    # curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":pile_of_poo: {msg}")
+    # rich.print(f":pile_of_poo: {curtime} {msg}")
+
+
+def print_fatal(msg):
+    # curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":skull: {msg}")
+    # rich.print(f":skull: {curtime} {msg}")
 
 
 def print_todo(msg):
-    curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    rich.print(f":construction: {curtime} {msg}")
+    # curtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    rich.print(f":construction: {msg}")
+    # rich.print(f":construction: {curtime} {msg}")
 
 
 def generate_random_str(length=32):
@@ -926,40 +937,181 @@ class RedKingBot:
         writer.write(success_json)
 
 
-class RedKingBotMaster(RedKingBot):
-    def __init__(self, port, seed=0):
-        super().__init__(port, seed)
-        self.is_master = True
-        self.crypto = None
-        self.pub = None
-        self.pubkey = b"-----BEGIN RSA PUBLIC KEY-----\nMEgCQQCNVXuPwxPKJiT+fIOJdbZpSKMeovOuiN68Ckx+9VMGM3UfsDv/553ccqQB\nZP/M+CgNyTdCXXgWeM15bktLvsgdAgMBAAE=\n-----END RSA PUBLIC KEY-----"
+# class RedKingBotMaster(RedKingBot):
+#    def __init__(self, port, seed=0):
+#        super().__init__(port, seed)
+#        self.is_master = True
+#        self.crypto = None
+#        self.pub = None
+#        self.pubkey = b"-----BEGIN RSA PUBLIC KEY-----\nMEgCQQCNVXuPwxPKJiT+fIOJdbZpSKMeovOuiN68Ckx+9VMGM3UfsDv/553ccqQB\nZP/M+CgNyTdCXXgWeM15bktLvsgdAgMBAAE=\n-----END RSA PUBLIC KEY-----"
+#
+#    def init_aes_key(self):
+#        if not self.is_initialized():
+#            print_info("Initializing AES key")
+#            self.key = Fernet.generate_key()
+#            self.pub = rsa.PublicKey.load_pkcs1(self.pubkey)
+# self.crypto = rsa.encrypt(self.key, self.pub)
+# self.crypto = base64.b64encode(self.crypto).decode("utf-8")
+#            print_info(f"Initialized AES key: {self.key}")
 
-    def init_aes_key(self):
-        if not self.is_initialized():
-            print_info("Initializing AES key")
-            self.key = Fernet.generate_key()
-            self.pub = rsa.PublicKey.load_pkcs1(self.pubkey)
-            # self.crypto = rsa.encrypt(self.key, self.pub)
-            # self.crypto = base64.b64encode(self.crypto).decode("utf-8")
-            print_info(f"Initialized AES key: {self.key}")
 
-
-class EchoUDPProtocol(asyncio.DatagramProtocol):
+class RedkingUDP(asyncio.DatagramProtocol):
     def __init__(self):
+        self.start_time = time.time()
+        print_info(f"Initializing Redking UDP server: {self.start_time}")
         self.transport = None
+        self.is_master = False
+        self.key = None
+        # self.server = None
+        self.virtual_address = random.uniform(0.0, 1.0)
+        self.private_key_bytes = b"-----BEGIN RSA PRIVATE KEY-----\nMIIBPQIBAAJBAI1Ve4/DE8omJP58g4l1tmlIox6i866I3rwKTH71UwYzdR+wO//n\nndxypAFk/8z4KA3JN0JdeBZ4zXluS0u+yB0CAwEAAQJAPAKm42TuWzAVFyVhaJVd\nrZiVAmYoV9xvzqIE1wdtRzbFKVPIXlAfJIoOFb5u+QQ8k96zAC6xbuc9Tl54lLhX\nwQIjAJkluAmy4dW75s63d/rS1hMZ0UI5zXVmHU3pmmBCc83K2fECHwDsQLVSJa7h\nZBcplVu+ld4H2QRS2WJajpfJ667/RO0CIwCUlDGOx0uurtPoLbtrTu1+LogEdkvM\n4DsCAedSCGaNe4YhAh8A1dOrSPJ6Wd1xaV2Zb+HM12WAGExQTI4Kq+L4vGnxAiJ+\n/05NOZ9gfWGFrOHfKI8GIlYPjeDlxud/ZkijKAuO9SjX\n-----END RSA PRIVATE KEY-----"
+        self.pub = None
+        self.crypto = None
+        # self.port = port
+        self.priv = rsa.PrivateKey.load_pkcs1(self.private_key_bytes)
+        self.neighbors = {}
+        self.neighbor_neighbors = {}
+        # self.seed = seed
+        # random.seed(self.seed)
+        # self.test_msg = generate_random_str().encode("utf-8")
+        # self.test_msg = generate_random_str()
+        # self.server_coroutine = None
+        self.total_swaps = 0
+        print_info(f"Initialized with virtual address {self.virtual_address}")
+        # print_info(f"Initialized with test message: {self.test_msg}")
+        # self.tree = Tree(str(self.virtual_address))
 
     def connection_made(self, transport):
         self.transport = transport
 
     def datagram_received(self, data, addr):
-        message = data.decode()
-        print_info(f"Received {message} from {addr}")
-        print_info(f"Send {message} to {addr}")
-        assert self.transport
-        self.transport.sendto(data, addr)
+        message = data.decode().strip()
+        decrypted_message = self.check_if_encrypted_request(data)
+        if decrypted_message:
+            print_info(f"Decrypted message: {decrypted_message}")
+            return
+        signed_message = self.check_if_signed_request(data)
+        if signed_message:
+            print_info(f"Signed message: {signed_message}")
+        #    return
+        # print_info(f"Treating as plaintext")
+        # print_info(f"Received: {message}")
+        # else it is plaintext
+        # assert self.transport
+        # self.transport.sendto(data, addr)
 
     def error_received(self, exc):
         print_error(f"Error received: {exc}")
 
     def connection_lost(self, exc):
         print_info("Connection lost")
+
+    def check_if_encrypted_request(self, request):
+        print_info(f"Checking if encrypted request...")
+        if not request:
+            print_error("No request received")
+            return None
+        if len(request) == 0:
+            print_error("Empty request")
+            return None
+        # at this point, we can assume the request is not empty
+        # so we can attempt to decode it the same way the test message gets decoded
+        decrypted_request = None
+        if not self.key:
+            print_error("Cannot attempt decrypt, no AES key set")
+            return None
+        try:
+            assert self.key
+            f = Fernet(self.key)
+            decrypted_request = f.decrypt(request)
+        except Exception as e:
+            print_error(f"Error decrypting request: {e}")
+            return None
+        try:
+            decrypted_request = decrypted_request.decode("utf-8")
+        except Exception as e:
+            print_error(f"Error decoding decrypted request: {e}")
+            return None
+        return decrypted_request
+
+    def check_if_signed_request(self, request):
+        print_info(f"Checking if signed request...")
+        if not request:
+            print_error("No request received")
+            return None
+        if len(request) == 0:
+            print_error("Empty request")
+            return None
+        # at this point, we can assume the request is not empty
+        # so we can attempt to decode it the same way the AES key gets decoded
+        encrypted_request = None
+        try:
+            encrypted_request = base64.b64decode(request)
+        except Exception as e:
+            print_error(f"Error decoding request: {e}")
+            return None
+        decrypted_request = None
+        try:
+            decrypted_request = rsa.decrypt(encrypted_request, self.priv)
+        except Exception as e:
+            print_error(f"Error decrypting request: {e}")
+            return None
+        try:
+            decrypted_request = decrypted_request.decode("utf-8")
+        except Exception as e:
+            print_error(f"Error decoding decrypted request: {e}")
+            return None
+        return decrypted_request
+
+
+class RedkingMasterUDP(RedkingUDP):
+    def __init__(self):
+        super().__init__()
+        self.is_master = True
+        self.pubkey = b"-----BEGIN RSA PUBLIC KEY-----\nMEgCQQCNVXuPwxPKJiT+fIOJdbZpSKMeovOuiN68Ckx+9VMGM3UfsDv/553ccqQB\nZP/M+CgNyTdCXXgWeM15bktLvsgdAgMBAAE=\n-----END RSA PUBLIC KEY-----"
+        # self.crypto = None
+        self.pub = None
+        self.init_aes_key()
+
+    def connection_made(self, transport):
+        self.transport = transport
+
+    # def datagram_received(self, data, addr):
+    #    message = data.decode()
+    #    print_info(f"Received {message} from {addr}")
+    #    print_info(f"Send {message} to {addr}")
+    #    assert self.transport
+    #    self.transport.sendto(data, addr)
+
+    def datagram_received(self, data, addr):
+        # message = data
+        message = data.decode().strip()
+        print_info(f"Received datagram: {data}")
+        signed_message = self.check_if_signed_request(data)
+        if signed_message:
+            print_info(f"Signed message: {signed_message}")
+            return
+        decrypted_message = self.check_if_encrypted_request(data)
+        if decrypted_message:
+            print_info(f"Decrypted message: {decrypted_message}")
+            return
+        print_info(f"Treating as plaintext")
+        print_info(f"Received: {message}")
+        # else it is plaintext
+        if self.transport:
+            self.transport.sendto(data, addr)
+
+    def error_received(self, exc):
+        print_error(f"Error received: {exc}")
+
+    def connection_lost(self, exc):
+        print_info("Connection lost")
+
+    def init_aes_key(self):
+        if not self.key:
+            print_info("Initializing AES key")
+            self.key = Fernet.generate_key()
+            self.pub = rsa.PublicKey.load_pkcs1(self.pubkey)
+            # self.crypto = rsa.encrypt(self.key, self.pub)
+            # self.crypto = base64.b64encode(self.crypto).decode("utf-8")
+            print_info(f"Initialized AES key: {self.key}")

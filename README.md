@@ -69,6 +69,8 @@ swap
 
 ## TODO
 
+- [ ] Change to UDP communication
+    - [ ] Re-implement the botmaster and bot classes using the asyncio UDP setup
 - [ ] On adding neighbors, need to verify the neighbor is up and running
 - [ ] Only the botmaster should receive raw commands and even then...
   - [ ] Commands sent between botmaster and bot should be optionally encrypted
