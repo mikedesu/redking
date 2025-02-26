@@ -992,7 +992,7 @@ class RedkingUDP(asyncio.DatagramProtocol):
         # start_time = time.time()
         signed_message = self.check_if_signed_request(data)
         if signed_message:
-            # print_info(f"Received RSA-signed message from {addr}: {signed_message}")
+            print_info(f"Received RSA-signed message from {addr}: {signed_message}")
             self.handle_signed_message(signed_message, addr)
         else:
             decrypted_message = self.check_if_encrypted_request(data)
@@ -1024,9 +1024,59 @@ class RedkingUDP(asyncio.DatagramProtocol):
             retval = self.handle_getkey(addr)
         elif cmd == "ping":
             retval = self.handle_ping(addr)
+        elif cmd == "pushkey":
+            retval = self.handle_pushkey(split_msg, addr)
+        elif cmd == "pk":  # bot received pk <base64_key>
+            print_todo("Bot received pk command")
+            key = split_msg[1]
+            decoded_key = base64.b64decode(key)
+            self.key = decoded_key
+        else:
+            retval = f"Unknown command: {cmd}"
         return retval
         # if self.transport:
         #    self.transport.sendto(return_msg.encode("utf-8"), addr)
+
+    def handle_pushkey(self, cmd_parts, addr):
+        print_info(f"Received pushkey request")
+        return_msg = ""
+        if not self.is_master:
+            return_msg = "Only master can handle pushkey"
+        elif len(cmd_parts) < 3:
+            return_msg = "pushkey <host> <port>"
+        else:
+            host = cmd_parts[1]
+            port = int(cmd_parts[2])
+            return_msg = self.pushkey_to_bot(host, port)
+        return return_msg
+
+    def pushkey_to_bot(self, host, port):
+        retval = ""
+        if not self.is_master:
+            retval = "Only master can handle pushkey"
+        elif not host:
+            retval = "No host received"
+        elif not port:
+            retval = "No port received"
+        elif not self.key:
+            retval = "No key set"
+        elif not self.pub:
+            retval = "No public key set"
+        elif self.transport:
+            remote_addr = (host, port)
+            decoded_key = self.key.decode("utf-8")
+            msg = f"pk {decoded_key}".encode("utf-8")
+            # RSA sign the message
+            if self.pub:
+                signed_msg = rsa.encrypt(msg, self.pub)
+                base64_signed_msg = base64.b64encode(signed_msg)
+                print_info(f"Sending signed message: {base64_signed_msg}")
+                self.transport.sendto(base64_signed_msg, remote_addr)
+                retval = "Sent key to bot"
+            else:
+                retval = "No private key set"
+        return retval
+        # self.transport.sendto(self.key, remote_addr)
 
     def handle_ping(self, addr):
         return_msg = "pong"
@@ -1068,7 +1118,7 @@ class RedkingUDP(asyncio.DatagramProtocol):
         message = message.strip()
         print_info(f"Received encrypted message from {addr}: {message}")
         retval = self.handle_function(message, addr)
-        # print_info(f"Return value: {retval}")
+        print_info(f"Return value: {retval}")
         # encrypt the return message
         encrypted_retval = None
         if not self.key:
@@ -1077,6 +1127,7 @@ class RedkingUDP(asyncio.DatagramProtocol):
         try:
             f = Fernet(self.key)
             assert retval
+            # print_info(f"Base64 encoded return value: {retval}")
             encrypted_retval = f.encrypt(retval.encode("utf-8"))
         except Exception as e:
             print_error(f"Error encrypting return message: {e}")
@@ -1091,8 +1142,14 @@ class RedkingUDP(asyncio.DatagramProtocol):
         retval = self.handle_function(message, addr)
         # sign the return message
         # check to make sure it is less than 53 bytes
+        if not retval:
+            print_error("No return message")
+            return
         if len(retval) > 53:
             print_error("Return message too long")
+            return
+        if not self.priv:
+            print_error("No private key set")
             return
         signed_retval = rsa.encrypt(retval.encode("utf-8"), self.priv)
         # print_info(f"signed_retval: {signed_retval}")
@@ -1142,7 +1199,7 @@ class RedkingUDP(asyncio.DatagramProtocol):
         return decrypted_request
 
     def check_if_signed_request(self, request):
-        # print_info(f"Checking if signed request...")
+        print_info(f"Checking if signed request...")
         if not request:
             print_error("No request received")
             return None
@@ -1155,18 +1212,18 @@ class RedkingUDP(asyncio.DatagramProtocol):
         try:
             encrypted_request = base64.b64decode(request)
         except Exception as e:
-            # print_error(f"Error decoding request: {e}")
+            print_error(f"Error base64 decoding request: {e}")
             return None
         decrypted_request = None
         try:
             decrypted_request = rsa.decrypt(encrypted_request, self.priv)
         except Exception as e:
-            # print_error(f"Error decrypting request: {e}")
+            print_error(f"Error RSA decrypting request: {e}")
             return None
         try:
             decrypted_request = decrypted_request.decode("utf-8")
         except Exception as e:
-            # print_error(f"Error decoding decrypted request: {e}")
+            print_error(f"Error decoding decrypted request: {e}")
             return None
         return decrypted_request
 
